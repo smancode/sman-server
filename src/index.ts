@@ -52,8 +52,7 @@ const app = express();
 app.use(express.json({ limit: '1mb' }));
 
 app.use('/updates/sman', express.static(updatesDir));
-// Prevent SPA catch-all from swallowing /updates/ paths with 403
-app.get('/updates/*', (_req, res) => res.status(404).send('Not found'));
+app.use('/updates', (_req, res) => res.status(404).send('Not found'));
 
 app.use('/api', createReportRouter(db, PSK));
 app.use('/api', createBroadcastRouter(db, PSK));
