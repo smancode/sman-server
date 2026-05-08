@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { api } from '../api';
 
 const ALLOWED_EXTS = ['.yml', '.dmg', '.exe', '.blockmap'];
@@ -16,6 +16,11 @@ export function UploadTab({ token }: { token: string }) {
   const [fileSize, setFileSize] = useState('');
   const [releaseNotes, setReleaseNotes] = useState('');
   const [publishing, setPublishing] = useState(false);
+  const [ymlPreview, setYmlPreview] = useState('');
+
+  useEffect(() => {
+    api.getLatestYml(token).then(setYmlPreview).catch(() => {});
+  }, [token]);
 
   const handleUpload = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -55,8 +60,9 @@ export function UploadTab({ token }: { token: string }) {
         sha512: sha512.trim() || undefined,
         size: fileSize ? parseInt(fileSize, 10) : undefined,
         releaseNotes: releaseNotes.trim() || undefined,
-      }) as { ok: boolean; path: string };
+      }) as { ok: boolean; path: string; yml: string };
       setMessage(`Published: ${result.path} (v${version})`);
+      if (result.yml) setYmlPreview(result.yml);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Publish failed');
     } finally {
@@ -116,6 +122,13 @@ export function UploadTab({ token }: { token: string }) {
 
       {message && <p className="success">{message}</p>}
       {error && <p className="error">{error}</p>}
+
+      {ymlPreview && (
+        <div className="form-section">
+          <h3>Current latest.yml</h3>
+          <pre className="yml-preview">{ymlPreview}</pre>
+        </div>
+      )}
     </div>
   );
 }

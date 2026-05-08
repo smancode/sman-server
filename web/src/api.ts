@@ -31,6 +31,13 @@ export const api = {
     if (!res.ok) throw new Error(`Upload failed: ${res.status}`);
     return res.json();
   },
-  publish: (token: string, data: { version: string; url: string; sha512?: string; size?: number; releaseNotes?: string }) =>
+  publish: (token: string, data: { version: string; url: string; filename?: string; sha512?: string; size?: number; releaseNotes?: string }) =>
     request('/publish', token, { method: 'POST', body: JSON.stringify(data) }),
+  getLatestYml: async (token: string): Promise<string> => {
+    const res = await fetch(`${BASE}/latest-yml`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    return res.text();
+  },
 };

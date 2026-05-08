@@ -65,7 +65,7 @@ export function createAdminRouter(db: HubDB, adminToken: string, updatesDir: str
   });
 
   router.post('/publish', (req: Request, res: Response) => {
-    const { version, url, sha512, size, releaseDate, releaseNotes } = req.body;
+    const { version, url, filename, sha512, size, releaseDate, releaseNotes } = req.body;
     if (!version || !url) {
       res.status(400).json({ error: 'version and url required' });
       return;
@@ -76,18 +76,43 @@ export function createAdminRouter(db: HubDB, adminToken: string, updatesDir: str
       res.status(400).json({ error: 'url must be a valid URL' });
       return;
     }
+    // Derive a safe filename for electron-updater's local temp path.
+    // The download URL may contain query params or lack an .exe/.dmg extension,
+    // which crashes electron-updater on Windows (illegal path chars like : and ?).
+    const downloadUrl = new URL(url);
+    let safeName = filename || '';
+    if (!safeName) {
+      // Try to extract from URL path
+      const urlBasename = decodeURIComponent(downloadUrl.pathname.split('/').filter(Boolean).pop() || '');
+      if (urlBasename && /\.(exe|dmg)$/i.test(urlBasename)) {
+        safeName = urlBasename;
+      } else {
+        safeName = `Sman-Setup-${version}.exe`;
+      }
+    }
     const date = releaseDate || new Date().toISOString();
     const yml = [
       `version: ${version}`,
       `files:`,
-      `  - url: ${url}`,
+      `  - url: ${safeName}`,
+      `    path: ${url}`,
       sha512 ? `    sha512: ${sha512}` : null,
       size ? `    size: ${size}` : null,
       `releaseDate: '${date}'`,
       releaseNotes ? `releaseNotes: '${releaseNotes.replace(/'/g, "''")}'` : null,
     ].filter(Boolean).join('\n') + '\n';
     fs.writeFileSync(path.join(updatesDir, 'latest.yml'), yml, 'utf-8');
-    res.json({ ok: true, path: '/updates/sman/latest.yml' });
+    res.json({ ok: true, path: '/updates/sman/latest.yml', yml });
+  });
+
+  router.get('/latest-yml', (_req: Request, res: Response) => {
+    const ymlPath = path.join(updatesDir, 'latest.yml');
+    try {
+      const content = fs.readFileSync(ymlPath, 'utf-8');
+      res.type('text/plain').send(content);
+    } catch {
+      res.status(404).send('latest.yml not found');
+    }
   });
 
   return router;
