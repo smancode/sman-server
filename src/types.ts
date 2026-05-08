@@ -57,34 +57,25 @@ export interface BroadcastResponse {
 /** Wire format for encrypted request body (single base64 blob: IV + ciphertext + authTag) */
 export type EncryptedPayload = string;
 
-/** Stored client record */
+/** Stored client record (maps to clients table, snake_case columns) */
 export interface ClientRecord {
-  /** Anonymous client ID */
-  clientId: string;
-  /** App version */
-  appVersion: string;
-  /** OS platform */
-  platform: string;
-  /** First report timestamp (ISO 8601) */
-  firstSeen: string;
-  /** Last report timestamp (ISO 8601) */
-  lastSeen: string;
-  /** Total number of reports received */
-  reportCount: number;
+  client_id: string;
+  version: string;
+  hostname: string;
+  ip: string;
+  first_seen: string;
+  last_seen: string;
+  active_sessions: number;
 }
 
 /** Admin dashboard statistics */
 export interface AdminStats {
   /** Total unique clients */
   totalClients: number;
-  /** Clients seen in the last 24 hours */
-  activeClients24h: number;
-  /** Clients seen in the last 7 days */
-  activeClients7d: number;
-  /** Breakdown by platform */
-  byPlatform: Record<string, number>;
-  /** Breakdown by app version */
-  byVersion: Record<string, number>;
-  /** Total broadcast messages */
-  totalBroadcasts: number;
+  /** Clients online in the last hour */
+  onlineClients: number;
+  /** Total reports in the last 24 hours */
+  totalReports24h: number;
+  /** Active broadcast messages */
+  activeBroadcasts: number;
 }
