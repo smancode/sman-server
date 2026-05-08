@@ -36,25 +36,7 @@ if [ ! -f ".env" ]; then
   cp .env.example .env
 fi
 
-# ── 2. 编译 ──────────────────────────────────────────
-
-echo -e "${CYAN}[1/3] Building server...${NC}"
-pnpm build:server 2>&1 | tail -5
-if [ $? -ne 0 ]; then
-  echo -e "${RED}Server build failed!${NC}"
-  exit 1
-fi
-echo -e "${GREEN}Server build OK.${NC}"
-
-echo -e "${CYAN}[2/3] Building web...${NC}"
-pnpm build:web 2>&1 | tail -5
-if [ $? -ne 0 ]; then
-  echo -e "${RED}Web build failed!${NC}"
-  exit 1
-fi
-echo -e "${GREEN}Web build OK.${NC}"
-
-# ── 3. 启动服务 ──────────────────────────────────────────
+# ── 2. 启动服务 ──────────────────────────────────────────
 
 cleanup() {
   echo -e "\n${YELLOW}Shutting down...${NC}"
@@ -64,17 +46,20 @@ cleanup() {
 }
 trap cleanup EXIT INT TERM
 
-echo -e "${CYAN}[3/3] Starting services...${NC}"
+echo -e "${CYAN}[1/2] Starting API server...${NC}"
 pnpm dev &
-echo -e "${GREEN}Server started on :5882${NC}"
+sleep 1
+echo -e "${GREEN}API server on :5882${NC}"
 
+echo -e "${CYAN}[2/2] Starting admin UI dev server...${NC}"
 cd web && pnpm dev &
 cd ..
-echo -e "${GREEN}Admin UI dev server on :4000${NC}"
+sleep 1
+echo -e "${GREEN}Admin UI on :4000${NC}"
 
 echo ""
 echo -e "${GREEN}Ready!${NC}"
-echo -e "  Server:    ${CYAN}http://127.0.0.1:5882${NC}"
+echo -e "  API:       ${CYAN}http://127.0.0.1:5882${NC}"
 echo -e "  Admin UI:  ${CYAN}http://127.0.0.1:4000${NC}"
 echo ""
 

@@ -50,17 +50,18 @@ app.get('/health', (_req, res) => res.json({ ok: true }));
 
 app.use('/admin', createAdminRouter(db, ADMIN_TOKEN, updatesDir));
 
-// SPA static files (localhost only)
+// SPA static files (localhost only, production mode)
 const publicDir = path.join(__dirname, 'public');
-app.use(localhostOnly, express.static(publicDir));
-// SPA fallback: serve index.html for any unmatched GET request
-app.use(localhostOnly, (req: Request, res: Response) => {
-  if (req.method === 'GET' && req.accepts('html')) {
-    res.sendFile(path.join(publicDir, 'index.html'));
-    return;
-  }
-  res.status(404).json({ error: 'Not found' });
-});
+if (fs.existsSync(path.join(publicDir, 'index.html'))) {
+  app.use(localhostOnly, express.static(publicDir));
+  app.use(localhostOnly, (req: Request, res: Response) => {
+    if (req.method === 'GET' && req.accepts('html')) {
+      res.sendFile(path.join(publicDir, 'index.html'));
+      return;
+    }
+    res.status(404).json({ error: 'Not found' });
+  });
+}
 
 const server = app.listen(PORT, () => {
   console.log(`sman-server listening on port ${PORT}`);
