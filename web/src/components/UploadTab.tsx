@@ -14,6 +14,7 @@ export function UploadTab({ token }: { token: string }) {
   const [downloadUrl, setDownloadUrl] = useState('');
   const [sha512, setSha512] = useState('');
   const [fileSize, setFileSize] = useState('');
+  const [releaseNotes, setReleaseNotes] = useState('');
   const [publishing, setPublishing] = useState(false);
 
   const handleUpload = async (e: React.FormEvent) => {
@@ -53,6 +54,7 @@ export function UploadTab({ token }: { token: string }) {
         url: downloadUrl.trim(),
         sha512: sha512.trim() || undefined,
         size: fileSize ? parseInt(fileSize, 10) : undefined,
+        releaseNotes: releaseNotes.trim() || undefined,
       }) as { ok: boolean; path: string };
       setMessage(`Published: ${result.path} (v${version})`);
     } catch (err) {
@@ -87,6 +89,12 @@ export function UploadTab({ token }: { token: string }) {
           placeholder="File size in bytes (optional)"
           value={fileSize}
           onChange={e => setFileSize(e.target.value)}
+        />
+        <textarea
+          placeholder="Release notes (optional)"
+          value={releaseNotes}
+          onChange={e => setReleaseNotes(e.target.value)}
+          rows={4}
         />
         <button type="submit" disabled={publishing || !version.trim() || !downloadUrl.trim()}>
           {publishing ? 'Publishing...' : 'Publish'}

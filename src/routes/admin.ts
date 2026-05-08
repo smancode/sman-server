@@ -65,12 +65,17 @@ export function createAdminRouter(db: HubDB, adminToken: string, updatesDir: str
   });
 
   router.post('/publish', (req: Request, res: Response) => {
-    const { version, url, sha512, size, releaseDate } = req.body;
+    const { version, url, sha512, size, releaseDate, releaseNotes } = req.body;
     if (!version || !url) {
       res.status(400).json({ error: 'version and url required' });
       return;
     }
-    const filename = decodeURIComponent(new URL(url).pathname.split('/').pop() || `Sman-${version}.exe`);
+    try {
+      new URL(url);
+    } catch {
+      res.status(400).json({ error: 'url must be a valid URL' });
+      return;
+    }
     const date = releaseDate || new Date().toISOString();
     const yml = [
       `version: ${version}`,
@@ -78,9 +83,8 @@ export function createAdminRouter(db: HubDB, adminToken: string, updatesDir: str
       `  - url: ${url}`,
       sha512 ? `    sha512: ${sha512}` : null,
       size ? `    size: ${size}` : null,
-      `path: ${url}`,
-      sha512 ? `sha512: ${sha512}` : null,
       `releaseDate: '${date}'`,
+      releaseNotes ? `releaseNotes: '${releaseNotes.replace(/'/g, "''")}'` : null,
     ].filter(Boolean).join('\n') + '\n';
     fs.writeFileSync(path.join(updatesDir, 'latest.yml'), yml, 'utf-8');
     res.json({ ok: true, path: '/updates/sman/latest.yml' });

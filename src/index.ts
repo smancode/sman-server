@@ -11,9 +11,22 @@ import { createAdminRouter } from './routes/admin.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PORT = parseInt(process.env.PORT || '5882', 10);
-const PSK = process.env.PSK;
 const ADMIN_TOKEN = process.env.ADMIN_TOKEN;
 const DATA_DIR = path.resolve(process.cwd(), 'data');
+const KEY_FILE = path.resolve(process.cwd(), 'hub.key');
+
+function loadPsk(): string {
+  if (process.env.PSK && process.env.PSK.length === 32) return process.env.PSK;
+  try {
+    const key = fs.readFileSync(KEY_FILE, 'utf-8').trim();
+    if (key.length === 32) return key;
+    console.error(`ERROR: hub.key must be exactly 32 characters, got ${key.length}`);
+  } catch {}
+  console.error('ERROR: PSK must be exactly 32 characters. Set PSK env var or hub.key file');
+  process.exit(1);
+}
+
+const PSK = loadPsk();
 
 function localhostOnly(req: Request, res: Response, next: NextFunction): void {
   const ip = req.ip ?? req.socket.remoteAddress ?? '';
@@ -24,10 +37,6 @@ function localhostOnly(req: Request, res: Response, next: NextFunction): void {
   res.status(403).send('Forbidden');
 }
 
-if (!PSK || PSK.length !== 32) {
-  console.error('ERROR: PSK must be exactly 32 characters. Set PSK in .env');
-  process.exit(1);
-}
 
 if (!ADMIN_TOKEN) {
   console.error('ERROR: ADMIN_TOKEN must be set in .env');
