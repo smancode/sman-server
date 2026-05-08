@@ -36,7 +36,22 @@ if [ ! -f ".env" ]; then
   cp .env.example .env
 fi
 
-# ── 2. 启动服务 ──────────────────────────────────────────
+# ── 2. Kill existing processes ──────────────────────────────
+
+kill_port() {
+  local port=$1
+  local pid=$(lsof -ti:$port 2>/dev/null)
+  if [ -n "$pid" ]; then
+    echo -e "${YELLOW}Killing existing process on :$port (PID $pid)...${NC}"
+    kill $pid 2>/dev/null
+    sleep 0.5
+  fi
+}
+
+kill_port 5882
+kill_port 4000
+
+# ── 3. 启动服务 ──────────────────────────────────────────
 
 cleanup() {
   echo -e "\n${YELLOW}Shutting down...${NC}"
