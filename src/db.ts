@@ -140,6 +140,12 @@ export class HubDB {
     ).all() as BroadcastRow[];
   }
 
+  getAllBroadcasts(): BroadcastRow[] {
+    return this.db.prepare(
+      "SELECT * FROM broadcasts ORDER BY created_at DESC"
+    ).all() as BroadcastRow[];
+  }
+
   getBroadcastsSince(since: string): BroadcastRow[] {
     return this.db.prepare(
       "SELECT * FROM broadcasts WHERE active = 1 AND created_at > ? ORDER BY created_at DESC"

@@ -5,7 +5,9 @@
   "type": "module",
   "scripts": {
     "dev": "tsx src/index.ts",
-    "build": "tsc",
+    "build": "tsc && cd web && pnpm build",
+    "build:server": "tsc",
+    "build:web": "cd web && pnpm build",
     "test": "vitest run",
     "test:watch": "vitest"
   },
