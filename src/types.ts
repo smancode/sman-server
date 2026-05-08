@@ -54,17 +54,8 @@ export interface BroadcastResponse {
   messages: BroadcastMessage[];
 }
 
-/** Wire format for encrypted request body */
-export interface EncryptedRequest {
-  /** Base64-encoded IV (12 bytes) */
-  iv: string;
-  /** Base64-encoded AES-256-GCM ciphertext */
-  data: string;
-  /** Base64-encoded auth tag (16 bytes) */
-  tag: string;
-  /** PSK version used for encryption */
-  pskVersion: number;
-}
+/** Wire format for encrypted request body (single base64 blob: IV + ciphertext + authTag) */
+export type EncryptedPayload = string;
 
 /** Stored client record */
 export interface ClientRecord {
