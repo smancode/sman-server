@@ -34,8 +34,8 @@ export function BroadcastsTab({ token }: { token: string }) {
       setTitle('');
       setBody('');
       await load();
-    } catch {
-      setError('Failed to create broadcast');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to create broadcast');
     } finally {
       setCreating(false);
     }
