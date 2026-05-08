@@ -64,5 +64,27 @@ export function createAdminRouter(db: HubDB, adminToken: string, updatesDir: str
     req.on('error', () => res.status(500).json({ error: 'Upload failed' }));
   });
 
+  router.post('/publish', (req: Request, res: Response) => {
+    const { version, url, sha512, size, releaseDate } = req.body;
+    if (!version || !url) {
+      res.status(400).json({ error: 'version and url required' });
+      return;
+    }
+    const filename = decodeURIComponent(new URL(url).pathname.split('/').pop() || `Sman-${version}.exe`);
+    const date = releaseDate || new Date().toISOString();
+    const yml = [
+      `version: ${version}`,
+      `files:`,
+      `  - url: ${url}`,
+      sha512 ? `    sha512: ${sha512}` : null,
+      size ? `    size: ${size}` : null,
+      `path: ${url}`,
+      sha512 ? `sha512: ${sha512}` : null,
+      `releaseDate: '${date}'`,
+    ].filter(Boolean).join('\n') + '\n';
+    fs.writeFileSync(path.join(updatesDir, 'latest.yml'), yml, 'utf-8');
+    res.json({ ok: true, path: '/updates/sman/latest.yml' });
+  });
+
   return router;
 }

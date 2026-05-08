@@ -31,4 +31,6 @@ export const api = {
     if (!res.ok) throw new Error(`Upload failed: ${res.status}`);
     return res.json();
   },
+  publish: (token: string, data: { version: string; url: string; sha512?: string; size?: number }) =>
+    request('/publish', token, { method: 'POST', body: JSON.stringify(data) }),
 };
