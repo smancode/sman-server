@@ -36,8 +36,13 @@ export function UploadTab({ token }: { token: string }) {
     setError('');
     setMessage('');
     try {
-      const result = await api.uploadFile(token, file.name, file) as { ok: boolean; path: string };
-      setMessage(`Uploaded: ${result.path}`);
+      const result = await api.uploadFile(token, file.name, file) as { ok: boolean; path: string; yml?: string; sha512?: string; version?: string; size: number };
+      let msg = `Uploaded: ${result.path} (${result.size} bytes)`;
+      if (result.yml) {
+        msg += ` | latest.yml generated (v${result.version}, sha512: ${result.sha512?.substring(0, 16)}...)`;
+        setYmlPreview(result.yml);
+      }
+      setMessage(msg);
       setFile(null);
     } catch {
       setError('Upload failed');
@@ -109,7 +114,7 @@ export function UploadTab({ token }: { token: string }) {
 
       <form className="form-section" onSubmit={handleUpload}>
         <h3>Upload File Directly</h3>
-        <p className="hint">Upload .yml, .dmg, .exe, .blockmap to this server</p>
+        <p className="hint">Upload .yml, .dmg, .exe, .blockmap. Version auto-extracted from filename (e.g. Sman-Setup-26.5.0.exe → v26.5.0).</p>
         <input
           type="file"
           accept=".yml,.dmg,.exe,.blockmap"

@@ -22,8 +22,10 @@ export const api = {
     request('/broadcast', token, { method: 'POST', body: JSON.stringify(data) }),
   deleteBroadcast: (token: string, id: string) =>
     request(`/broadcast/${id}`, token, { method: 'DELETE' }),
-  uploadFile: async (token: string, filename: string, file: File) => {
-    const res = await fetch(`${BASE}/upload?filename=${encodeURIComponent(filename)}`, {
+  uploadFile: async (token: string, filename: string, file: File, options?: { releaseNotes?: string }) => {
+    const params = new URLSearchParams({ filename });
+    if (options?.releaseNotes) params.set('releaseNotes', options.releaseNotes);
+    const res = await fetch(`${BASE}/upload?${params}`, {
       method: 'PUT',
       headers: { Authorization: `Bearer ${token}` },
       body: file,

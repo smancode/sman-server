@@ -16,13 +16,13 @@ const DATA_DIR = path.resolve(process.cwd(), 'data');
 const KEY_FILE = path.resolve(process.cwd(), 'hub.key');
 
 function loadPsk(): string {
-  if (process.env.PSK && process.env.PSK.length === 32) return process.env.PSK;
+  if (process.env.SMAN_PSK && process.env.SMAN_PSK.length === 32) return process.env.SMAN_PSK;
   try {
     const key = fs.readFileSync(KEY_FILE, 'utf-8').trim();
     if (key.length === 32) return key;
     console.error(`ERROR: hub.key must be exactly 32 characters, got ${key.length}`);
   } catch {}
-  console.error('ERROR: PSK must be exactly 32 characters. Set PSK env var or hub.key file');
+  console.error('ERROR: PSK must be exactly 32 characters. Set SMAN_PSK env var or hub.key file');
   process.exit(1);
 }
 
@@ -52,6 +52,35 @@ const app = express();
 app.use(express.json({ limit: '1mb' }));
 
 app.use('/updates/sman', express.static(updatesDir));
+// Redirect proxy: when electron-updater downloads a file that is actually an external URL,
+// look up the real URL from _redirects/ and 302 redirect. This avoids Windows path issues
+// with external URLs containing : and ? characters.
+app.get('/updates/sman/:filename', (req: Request<{ filename: string }>, res: Response) => {
+  const fname = req.params.filename;
+  // Skip non-binary files (yml, blockmap, etc.) — let express.static handle them
+  if (fname.endsWith('.yml') || fname.endsWith('.blockmap')) {
+    const filePath = path.join(updatesDir, fname);
+    if (fs.existsSync(filePath)) {
+      res.sendFile(filePath);
+      return;
+    }
+    res.status(404).send('Not found');
+    return;
+  }
+  const redirectFile = path.join(updatesDir, '_redirects', fname);
+  try {
+    const targetUrl = fs.readFileSync(redirectFile, 'utf-8').trim();
+    res.redirect(302, targetUrl);
+  } catch {
+    // No redirect mapping — check if actual file exists
+    const filePath = path.join(updatesDir, fname);
+    if (fs.existsSync(filePath)) {
+      res.sendFile(filePath);
+      return;
+    }
+    res.status(404).send('Not found');
+  }
+});
 app.use('/updates', (_req, res) => res.status(404).send('Not found'));
 
 app.use('/api', createReportRouter(db, PSK));

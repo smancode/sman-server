@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import type { Request, Response } from 'express';
 import type { HubDB } from '../db.js';
+import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 
@@ -48,6 +49,7 @@ export function createAdminRouter(db: HubDB, adminToken: string, updatesDir: str
     req.on('data', (chunk: Buffer) => chunks.push(chunk));
     req.on('end', () => {
       const filename = req.query.filename as string;
+      const releaseNotes = req.query.releaseNotes as string;
       if (!filename) {
         res.status(400).json({ error: 'filename query param required' });
         return;
@@ -57,9 +59,42 @@ export function createAdminRouter(db: HubDB, adminToken: string, updatesDir: str
         res.status(400).json({ error: 'Unsupported file type' });
         return;
       }
-      const targetPath = path.join(updatesDir, path.basename(filename));
-      fs.writeFileSync(targetPath, Buffer.concat(chunks));
-      res.json({ ok: true, path: `/updates/sman/${path.basename(filename)}` });
+      const data = Buffer.concat(chunks);
+      const basename = path.basename(filename);
+      const targetPath = path.join(updatesDir, basename);
+      fs.writeFileSync(targetPath, data);
+
+      const result: Record<string, unknown> = {
+        ok: true,
+        path: `/updates/sman/${basename}`,
+        size: data.length,
+      };
+
+      // Auto-generate latest.yml for installer uploads (.exe/.dmg)
+      // Extract version from filename, e.g. "Sman-Setup-26.508.16.exe" → "26.508.16"
+      if (['.exe', '.dmg'].includes(ext)) {
+        const versionMatch = basename.match(/(\d+\.\d+\.\d+)/);
+        if (versionMatch) {
+          const version = versionMatch[1];
+          const sha512 = crypto.createHash('sha512').update(data).digest('base64');
+          const date = new Date().toISOString();
+          const yml = [
+            `version: ${version}`,
+            `files:`,
+            `  - url: ${basename}`,
+            `    sha512: ${sha512}`,
+            `    size: ${data.length}`,
+            `releaseDate: '${date}'`,
+            releaseNotes ? `releaseNotes: '${releaseNotes.replace(/'/g, "''")}'` : null,
+          ].filter(Boolean).join('\n') + '\n';
+          fs.writeFileSync(path.join(updatesDir, 'latest.yml'), yml, 'utf-8');
+          result.yml = yml;
+          result.sha512 = sha512;
+          result.version = version;
+        }
+      }
+
+      res.json(result);
     });
     req.on('error', () => res.status(500).json({ error: 'Upload failed' }));
   });
@@ -76,13 +111,12 @@ export function createAdminRouter(db: HubDB, adminToken: string, updatesDir: str
       res.status(400).json({ error: 'url must be a valid URL' });
       return;
     }
-    // Derive a safe filename for electron-updater's local temp path.
-    // The download URL may contain query params or lack an .exe/.dmg extension,
-    // which crashes electron-updater on Windows (illegal path chars like : and ?).
+    // Determine a safe filename for electron-updater's local temp path.
+    // External URLs with query params or non-.exe paths crash on Windows,
+    // so we create a local redirect file that points to the real URL.
     const downloadUrl = new URL(url);
     let safeName = filename || '';
     if (!safeName) {
-      // Try to extract from URL path
       const urlBasename = decodeURIComponent(downloadUrl.pathname.split('/').filter(Boolean).pop() || '');
       if (urlBasename && /\.(exe|dmg)$/i.test(urlBasename)) {
         safeName = urlBasename;
@@ -90,12 +124,17 @@ export function createAdminRouter(db: HubDB, adminToken: string, updatesDir: str
         safeName = `Sman-Setup-${version}.exe`;
       }
     }
+
+    // Save the redirect mapping: filename → real external URL
+    const redirectDir = path.join(updatesDir, '_redirects');
+    fs.mkdirSync(redirectDir, { recursive: true });
+    fs.writeFileSync(path.join(redirectDir, safeName), url, 'utf-8');
+
     const date = releaseDate || new Date().toISOString();
     const yml = [
       `version: ${version}`,
       `files:`,
       `  - url: ${safeName}`,
-      `    path: ${url}`,
       sha512 ? `    sha512: ${sha512}` : null,
       size ? `    size: ${size}` : null,
       `releaseDate: '${date}'`,
