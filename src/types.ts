@@ -1,35 +1,33 @@
 /** Client -> Server: usage report payload */
 export interface ReportPayload {
-  /** Unique client identifier (anonymous) */
+  /** Unique client identifier */
   clientId: string;
-  /** App version, e.g. "1.2.3" */
-  appVersion: string;
-  /** OS platform: "darwin" | "win32" | "linux" */
-  platform: string;
-  /** Feature usage counters */
-  features: Record<string, number>;
-  /** ISO 8601 timestamp from client */
-  timestamp: string;
+  /** App version */
+  version: string;
+  /** Client hostname */
+  hostname: string;
+  /** Client IP address */
+  ip: string;
+  /** Number of active sessions */
+  activeSessions: number;
+  /** ISO 8601 report time */
+  reportTime: string;
 }
 
 /** Client -> Server: broadcast query payload */
 export interface BroadcastQueryPayload {
   /** Unique client identifier */
   clientId: string;
-  /** App version */
-  appVersion: string;
-  /** ISO 8601 timestamp */
-  timestamp: string;
+  /** ISO 8601 timestamp - fetch broadcasts since this time */
+  since: string;
 }
 
 /** Client -> Server: broadcast acknowledgment */
 export interface AckPayload {
   /** Unique client identifier */
   clientId: string;
-  /** ID of the broadcast message being acknowledged */
-  broadcastId: string;
-  /** ISO 8601 timestamp */
-  timestamp: string;
+  /** IDs of broadcast messages being acknowledged */
+  broadcastIds: string[];
 }
 
 /** A single broadcast message */
@@ -56,6 +54,16 @@ export interface BroadcastResponse {
 
 /** Wire format for encrypted request body (single base64 blob: IV + ciphertext + authTag) */
 export type EncryptedPayload = string;
+
+/** Encrypted request envelope sent by client */
+export interface EncryptedRequest {
+  /** Encrypted payload (base64 blob from crypto.encrypt) */
+  payload: EncryptedPayload;
+  /** Unix timestamp (seconds) for replay protection */
+  timestamp: number;
+  /** PSK version used for encryption */
+  pskVersion: number;
+}
 
 /** Stored client record (maps to clients table, snake_case columns) */
 export interface ClientRecord {

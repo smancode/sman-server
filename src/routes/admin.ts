@@ -27,7 +27,7 @@ export function createAdminRouter(db: HubDB, adminToken: string, updatesDir: str
   });
 
   router.delete('/broadcast/:id', (req: Request, res: Response) => {
-    db.deactivateBroadcast(req.params.id);
+    db.deactivateBroadcast(String(req.params.id));
     res.json({ ok: true });
   });
 
