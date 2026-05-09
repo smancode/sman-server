@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { api } from '../api';
 import type { ClientRecord } from '../types';
 
@@ -11,12 +11,19 @@ function formatDateTime(iso: string): string {
 export function ClientsTab({ token }: { token: string }) {
   const [clients, setClients] = useState<ClientRecord[]>([]);
   const [error, setError] = useState('');
+  const timerRef = useRef<ReturnType<typeof setInterval>>(undefined);
 
-  useEffect(() => {
+  const load = useCallback(() => {
     api.getClients(token)
-      .then(data => setClients(data as ClientRecord[]))
+      .then(data => { setClients(data as ClientRecord[]); setError(''); })
       .catch(() => setError('Failed to load clients'));
   }, [token]);
+
+  useEffect(() => {
+    load();
+    timerRef.current = setInterval(load, 30_000);
+    return () => clearInterval(timerRef.current);
+  }, [load]);
 
   if (error) return <p className="error">{error}</p>;
   if (!clients.length) return <p>No clients registered yet.</p>;
