@@ -14,6 +14,8 @@ export function createRoomsRouter(roomDB: RoomDB, adminToken: string): Router {
     next();
   });
 
+  // ---- Read ----
+
   router.get('/rooms', (_req: Request, res: Response) => {
     const rooms = roomDB.listRooms();
     const result = rooms.map(room => ({
@@ -38,6 +40,53 @@ export function createRoomsRouter(roomDB: RoomDB, adminToken: string): Router {
     const rooms = roomDB.listRooms();
     const allAgents = rooms.flatMap(room => roomDB.getRoomAgents(room.id));
     res.json(allAgents);
+  });
+
+  // ---- Write ----
+
+  router.post('/rooms', (req: Request, res: Response) => {
+    const { name, description, maxAgents, ownerId } = req.body;
+    if (!name) {
+      res.status(400).json({ error: 'Room name is required' });
+      return;
+    }
+    const room = roomDB.createRoom({
+      name,
+      description,
+      ownerId: ownerId || 'admin',
+      maxAgents,
+    });
+    res.status(201).json(room);
+  });
+
+  router.post('/rooms/:id/join', (req: Request<{ id: string }>, res: Response) => {
+    const roomId = req.params.id;
+    const { clientId, displayName } = req.body;
+    if (!clientId) {
+      res.status(400).json({ error: 'clientId is required' });
+      return;
+    }
+    const member = roomDB.joinRoom({
+      roomId,
+      clientId,
+      displayName: displayName || clientId,
+    });
+    if (!member) {
+      res.status(409).json({ error: 'Cannot join room (not found, full, or already joined)' });
+      return;
+    }
+    res.json(member);
+  });
+
+  router.post('/rooms/:id/leave', (req: Request<{ id: string }>, res: Response) => {
+    const roomId = req.params.id;
+    const { clientId } = req.body;
+    if (!clientId) {
+      res.status(400).json({ error: 'clientId is required' });
+      return;
+    }
+    const left = roomDB.leaveRoom(roomId, clientId);
+    res.json({ ok: left });
   });
 
   router.delete('/rooms/:id', (req: Request<{ id: string }>, res: Response) => {

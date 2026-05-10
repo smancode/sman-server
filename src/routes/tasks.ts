@@ -46,5 +46,37 @@ export function createTasksRouter(taskDB: TaskDB, adminToken: string): Router {
     res.json(stats);
   });
 
+  router.post('/tasks', (req: Request, res: Response) => {
+    const { roomId, title, description, priority, context, createdBy } = req.body;
+    if (!roomId || !title) {
+      res.status(400).json({ error: 'roomId and title are required' });
+      return;
+    }
+    const task = taskDB.createTask({
+      roomId,
+      title,
+      description,
+      createdBy: createdBy || 'admin',
+      priority,
+      context,
+    });
+    res.status(201).json(task);
+  });
+
+  router.post('/tasks/:id/cancel', (req: Request<{ id: string }>, res: Response) => {
+    const task = taskDB.getTask(req.params.id);
+    if (!task) {
+      res.status(404).json({ error: 'Task not found' });
+      return;
+    }
+    if (task.status !== 'queued' && task.status !== 'dispatched') {
+      res.status(409).json({ error: 'Only queued or dispatched tasks can be cancelled' });
+      return;
+    }
+    taskDB.transitionStatus(req.params.id, 'cancelled', 'admin');
+    const updated = taskDB.getTask(req.params.id);
+    res.json(updated);
+  });
+
   return router;
 }
