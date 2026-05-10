@@ -130,7 +130,7 @@ export class WsHub {
     const client = this.clients.get(ws);
     if (!client) return;
 
-    if (this.taskHandler && msg.type.startsWith('task.')) {
+    if (this.taskHandler && (msg.type.startsWith('task.') || msg.type.startsWith('evaluation.'))) {
       const handled = this.taskHandler.handle(client, msg);
       if (handled) return;
     }
@@ -357,6 +357,17 @@ export class WsHub {
     for (const ws of roomSet) {
       if (ws.readyState === WebSocket.OPEN) {
         ws.send(data);
+      }
+    }
+  }
+
+  sendToAgent(agentId: string, msg: WsMessage): void {
+    const agent = this.roomDB.getAgent(agentId);
+    if (!agent) return;
+    for (const [ws, client] of this.clients) {
+      if (client.clientId === agent.client_id && ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify(msg));
+        return;
       }
     }
   }

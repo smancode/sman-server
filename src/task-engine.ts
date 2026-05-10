@@ -1,9 +1,9 @@
 import { TaskDB } from './db-tasks.js';
-import type { TaskRecord, TaskStatus } from './types.js';
+import type { CreateEvaluationReportParams, CreateAssignmentParams } from './db-tasks.js';
+import type { TaskRecord, TaskStatus, EvaluationReportRecord, TaskAssignmentRecord } from './types.js';
 
 const INFRA_ERROR_PATTERNS = ['runtime_offline', 'runtime_recovery', 'timeout', 'ECONNRESET', 'ETIMEDOUT', 'socket hang up'];
 const DEFAULT_MAX_RETRIES = 3;
-const MAX_ORIGIN_CHAIN_DEPTH = 5;
 
 export class TaskEngine {
   private taskDB: TaskDB;
@@ -12,6 +12,8 @@ export class TaskEngine {
     this.taskDB = taskDB;
   }
 
+  // ---- Task CRUD ----
+
   createTask(params: {
     roomId: string;
     title: string;
@@ -19,16 +21,32 @@ export class TaskEngine {
     createdBy: string;
     priority?: number;
     context?: Record<string, unknown>;
+    acceptanceCriteria?: string;
+    subtasks?: { id: string; name: string; description?: string }[];
+    autoExecute?: boolean;
+    gitBranch?: string;
   }): TaskRecord {
-    const ctx = params.context ?? {};
-    if (ctx.originChain) {
-      const chain = ctx.originChain as string[];
-      if (chain.length >= MAX_ORIGIN_CHAIN_DEPTH) {
-        throw new Error(`Task origin chain too deep (max ${MAX_ORIGIN_CHAIN_DEPTH})`);
-      }
-    }
     return this.taskDB.createTask(params);
   }
+
+  cancelTask(taskId: string, cancelledBy: string): TaskRecord | null {
+    const task = this.taskDB.getTask(taskId);
+    if (!task) return null;
+    if (task.status === 'completed' || task.status === 'cancelled') return null;
+    return this.taskDB.transitionStatus(taskId, 'cancelled', cancelledBy, { reason: 'user_cancel' });
+  }
+
+  // ---- Status Transitions ----
+
+  rejectTask(taskId: string, actor: string, reason?: string): TaskRecord | null {
+    return this.taskDB.transitionStatus(taskId, 'rejected', actor, { reason });
+  }
+
+  confirmTask(taskId: string, actor: string): TaskRecord | null {
+    return this.taskDB.transitionStatus(taskId, 'confirmed', actor);
+  }
+
+  // ---- Legacy: direct claim/start/complete ----
 
   claimTask(taskId: string, agentId: string, maxConcurrent: number): TaskRecord | null {
     return this.taskDB.claimTask(taskId, agentId, maxConcurrent);
@@ -64,7 +82,7 @@ export class TaskEngine {
       const retryCount = this.taskDB.incrementRetry(taskId);
       const retried = this.taskDB.transitionStatus(taskId, 'failed', agentId, { error, autoRetry: true });
       if (retried) {
-        this.taskDB.transitionStatus(taskId, 'queued', undefined, { retryCount });
+        this.taskDB.transitionStatus(taskId, 'evaluating', undefined, { retryCount });
         return this.taskDB.getTask(taskId) ?? null;
       }
     }
@@ -72,29 +90,74 @@ export class TaskEngine {
     return this.taskDB.transitionStatus(taskId, 'failed', agentId, { error });
   }
 
-  cancelTask(taskId: string, cancelledBy: string): TaskRecord | null {
+  // ---- Evaluation Reports ----
+
+  submitEvaluationReport(params: CreateEvaluationReportParams): EvaluationReportRecord {
+    return this.taskDB.createEvaluationReport(params);
+  }
+
+  listEvaluationReports(taskId: string): EvaluationReportRecord[] {
+    return this.taskDB.listEvaluationReports(taskId);
+  }
+
+  approveReport(reportId: string): EvaluationReportRecord | null {
+    return this.taskDB.updateReportStatus(reportId, 'approved');
+  }
+
+  rejectReport(reportId: string, comment?: string): EvaluationReportRecord | null {
+    return this.taskDB.updateReportStatus(reportId, 'rejected', comment);
+  }
+
+  // ---- Dispatch (publisher assigns work) ----
+
+  dispatchTask(taskId: string, assignments: CreateAssignmentParams[], actor: string): { task: TaskRecord; assignments: TaskAssignmentRecord[] } | null {
     const task = this.taskDB.getTask(taskId);
-    if (!task) return null;
-    if (task.status === 'completed' || task.status === 'cancelled') return null;
+    if (!task || task.status !== 'confirmed') return null;
 
-    return this.taskDB.transitionStatus(taskId, 'cancelled', cancelledBy, { reason: 'user_cancel' });
+    const created = this.taskDB.createAssignments(taskId, assignments);
+
+    // Assign first agent as primary assignee
+    if (created.length > 0) {
+      this.taskDB.assignTask(taskId, created[0].agent_id);
+    }
+
+    const updated = this.taskDB.transitionStatus(taskId, 'dispatched', actor, {
+      assignmentCount: created.length,
+      agents: assignments.map(a => a.agentId),
+    });
+
+    return updated ? { task: updated, assignments: created } : null;
   }
 
-  getResumableTasks(agentId: string): TaskRecord[] {
-    const dispatched = this.taskDB.listRoomTasks('', 'dispatched').filter(t => t.assigned_to === agentId);
-    const running = this.taskDB.listRoomTasks('', 'running').filter(t => t.assigned_to === agentId);
-    return [...dispatched, ...running];
+  getAssignments(taskId: string): TaskAssignmentRecord[] {
+    return this.taskDB.getAssignments(taskId);
   }
+
+  getAgentAssignments(agentId: string): TaskAssignmentRecord[] {
+    return this.taskDB.getAgentAssignments(agentId);
+  }
+
+  updateAssignmentStatus(assignmentId: string, status: 'assigned' | 'running' | 'completed' | 'failed'): void {
+    this.taskDB.updateAssignmentStatus(assignmentId, status);
+  }
+
+  // ---- Queries ----
 
   getRoomTasks(roomId: string, status?: TaskStatus): TaskRecord[] {
     return this.taskDB.listRoomTasks(roomId, status);
   }
 
-  getTaskDetail(taskId: string): { task: TaskRecord; events: import('./types.js').TaskEventRecord[] } | null {
+  getTaskDetail(taskId: string): { task: TaskRecord; events: import('./types.js').TaskEventRecord[]; evaluations: EvaluationReportRecord[]; assignments: TaskAssignmentRecord[] } | null {
     const task = this.taskDB.getTask(taskId);
     if (!task) return null;
     const events = this.taskDB.getTaskEvents(taskId);
-    return { task, events };
+    const evaluations = this.taskDB.listEvaluationReports(taskId);
+    const assignments = this.taskDB.getAssignments(taskId);
+    return { task, events, evaluations, assignments };
+  }
+
+  getTask(taskId: string): TaskRecord | undefined {
+    return this.taskDB.getTask(taskId);
   }
 
   private isInfraError(error: string): boolean {

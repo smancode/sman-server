@@ -95,8 +95,8 @@ export interface AdminStats {
 /** Agent status on the network */
 export type AgentStatus = 'online' | 'offline' | 'busy';
 
-/** Task lifecycle status (5-stage) */
-export type TaskStatus = 'queued' | 'dispatched' | 'running' | 'completed' | 'failed' | 'cancelled';
+/** Task lifecycle status */
+export type TaskStatus = 'draft' | 'evaluating' | 'confirmed' | 'rejected' | 'dispatched' | 'running' | 'completed' | 'failed' | 'cancelled' | 'queued';
 
 /** Room role */
 export type RoomRole = 'owner' | 'member';
@@ -156,6 +156,11 @@ export interface TaskRecord {
   error: string | null;
   retry_count: number;
   max_retries: number;
+  acceptance_criteria: string | null;
+  subtasks: string;
+  auto_execute: number;
+  git_branch: string | null;
+  version: number;
   started_at: string | null;
   completed_at: string | null;
   created_at: string;
@@ -169,6 +174,36 @@ export interface TaskEventRecord {
   event: string;
   actor: string | null;
   metadata: string;
+  created_at: string;
+}
+
+/** Evaluation report record (maps to evaluation_reports table) */
+export interface EvaluationReportRecord {
+  id: string;
+  task_id: string;
+  agent_id: string;
+  workspace: string;
+  claimed_subtasks: string;
+  approach: string | null;
+  complexity: string | null;
+  dependencies: string;
+  raw_response: string | null;
+  status: 'pending' | 'approved' | 'rejected';
+  review_comment: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+/** Task assignment record (maps to task_assignments table) */
+export interface TaskAssignmentRecord {
+  id: string;
+  task_id: string;
+  agent_id: string;
+  workspace: string;
+  subtask_ids: string;
+  instructions: string | null;
+  report_id: string | null;
+  status: 'assigned' | 'running' | 'completed' | 'failed';
   created_at: string;
 }
 

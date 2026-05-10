@@ -32,7 +32,6 @@ export function createHubApiRouter(roomDB: RoomDB, taskDB: TaskDB, psk: string):
 
   // ---- Rooms ----
 
-  // List rooms (no name in payload) or create room (name in payload)
   router.post('/rooms', (req: Request, res: Response) => {
     const data = (req as any)._hubPayload;
     if (data?.name) {
@@ -53,7 +52,6 @@ export function createHubApiRouter(roomDB: RoomDB, taskDB: TaskDB, psk: string):
     res.json({ payload: encrypt(result, psk) });
   });
 
-  // Get room detail
   router.post('/rooms/:id', (req: Request<{ id: string }>, res: Response) => {
     const roomId = req.params.id;
     const room = roomDB.getRoom(roomId);
@@ -66,7 +64,6 @@ export function createHubApiRouter(roomDB: RoomDB, taskDB: TaskDB, psk: string):
     res.json({ payload: encrypt({ room, members, agents }, psk) });
   });
 
-  // Join room
   router.post('/rooms/:id/join', (req: Request<{ id: string }>, res: Response) => {
     const data = (req as any)._hubPayload;
     const roomId = req.params.id;
@@ -83,7 +80,6 @@ export function createHubApiRouter(roomDB: RoomDB, taskDB: TaskDB, psk: string):
     res.json({ payload: encrypt(member, psk) });
   });
 
-  // Leave room
   router.post('/rooms/:id/leave', (req: Request<{ id: string }>, res: Response) => {
     const data = (req as any)._hubPayload;
     const roomId = req.params.id;
@@ -106,7 +102,6 @@ export function createHubApiRouter(roomDB: RoomDB, taskDB: TaskDB, psk: string):
 
   // ---- Tasks ----
 
-  // List tasks (roomId in payload, no title) or create task (title in payload)
   router.post('/tasks', (req: Request, res: Response) => {
     const data = (req as any)._hubPayload;
     if (data?.title) {
@@ -120,7 +115,11 @@ export function createHubApiRouter(roomDB: RoomDB, taskDB: TaskDB, psk: string):
         description: data.description || '',
         priority: data.priority || 0,
         context: data.context,
-        createdBy: 'sman',
+        createdBy: data.createdBy || 'sman',
+        acceptanceCriteria: data.acceptanceCriteria,
+        subtasks: data.subtasks,
+        autoExecute: data.autoExecute,
+        gitBranch: data.gitBranch,
       });
       res.status(201).json({ payload: encrypt(task, psk) });
       return;
@@ -134,7 +133,6 @@ export function createHubApiRouter(roomDB: RoomDB, taskDB: TaskDB, psk: string):
     res.json({ payload: encrypt(tasks, psk) });
   });
 
-  // Get task detail
   router.post('/tasks/:id', (req: Request<{ id: string }>, res: Response) => {
     const taskId = req.params.id;
     const task = taskDB.getTask(taskId);
@@ -143,19 +141,136 @@ export function createHubApiRouter(roomDB: RoomDB, taskDB: TaskDB, psk: string):
       return;
     }
     const events = taskDB.getTaskEvents(task.id);
-    res.json({ payload: encrypt({ task, events }, psk) });
+    const evaluations = taskDB.listEvaluationReports(task.id);
+    const assignments = taskDB.getAssignments(task.id);
+    res.json({ payload: encrypt({ task, events, evaluations, assignments }, psk) });
   });
 
-  // Cancel task
   router.post('/tasks/:id/cancel', (req: Request<{ id: string }>, res: Response) => {
+    const data = (req as any)._hubPayload;
     const taskId = req.params.id;
     const task = taskDB.getTask(taskId);
     if (!task) {
       res.status(404).json({ error: 'Task not found' });
       return;
     }
-    taskDB.transitionStatus(taskId, 'cancelled');
+    taskDB.transitionStatus(taskId, 'cancelled', data?.cancelledBy);
     res.json({ payload: encrypt({ ok: true }, psk) });
+  });
+
+  // Confirm task
+  router.post('/tasks/:id/confirm', (req: Request<{ id: string }>, res: Response) => {
+    const data = (req as any)._hubPayload;
+    const taskId = req.params.id;
+    const task = taskDB.transitionStatus(taskId, 'confirmed', data?.actor);
+    if (!task) {
+      res.status(409).json({ error: 'Cannot confirm task (wrong status or not found)' });
+      return;
+    }
+    res.json({ payload: encrypt(task, psk) });
+  });
+
+  // Reject task
+  router.post('/tasks/:id/reject', (req: Request<{ id: string }>, res: Response) => {
+    const data = (req as any)._hubPayload;
+    const taskId = req.params.id;
+    const task = taskDB.transitionStatus(taskId, 'rejected', data?.actor, { reason: data?.reason });
+    if (!task) {
+      res.status(409).json({ error: 'Cannot reject task' });
+      return;
+    }
+    res.json({ payload: encrypt(task, psk) });
+  });
+
+  // Dispatch task
+  router.post('/tasks/:id/dispatch', (req: Request<{ id: string }>, res: Response) => {
+    const data = (req as any)._hubPayload;
+    const taskId = req.params.id;
+    const assignments = data?.assignments;
+    if (!Array.isArray(assignments) || assignments.length === 0) {
+      res.status(400).json({ error: 'assignments[] is required' });
+      return;
+    }
+
+    const task = taskDB.getTask(taskId);
+    if (!task || task.status !== 'confirmed') {
+      res.status(409).json({ error: 'Task must be confirmed before dispatch' });
+      return;
+    }
+
+    const created = taskDB.createAssignments(taskId, assignments);
+    if (created.length > 0) {
+      taskDB.assignTask(taskId, created[0].agent_id);
+    }
+    const updated = taskDB.transitionStatus(taskId, 'dispatched', data?.actor, {
+      assignmentCount: created.length,
+      agents: assignments.map((a: any) => a.agentId),
+    });
+
+    if (!updated) {
+      res.status(500).json({ error: 'Dispatch failed' });
+      return;
+    }
+    res.json({ payload: encrypt({ task: updated, assignments: created }, psk) });
+  });
+
+  // ---- Evaluation Reports ----
+
+  // List evaluation reports for a task
+  router.post('/evaluations', (req: Request, res: Response) => {
+    const data = (req as any)._hubPayload;
+    const taskId = data?.taskId;
+    if (!taskId) {
+      res.status(400).json({ error: 'taskId is required' });
+      return;
+    }
+    const reports = taskDB.listEvaluationReports(taskId);
+    res.json({ payload: encrypt(reports, psk) });
+  });
+
+  // Submit evaluation report
+  router.post('/evaluations/submit', (req: Request, res: Response) => {
+    const data = (req as any)._hubPayload;
+    const { taskId, agentId, workspace } = data || {};
+    if (!taskId || !agentId || !workspace) {
+      res.status(400).json({ error: 'taskId, agentId, workspace are required' });
+      return;
+    }
+
+    const report = taskDB.createEvaluationReport({
+      taskId,
+      agentId,
+      workspace,
+      claimedSubtasks: data.claimedSubtasks || [],
+      approach: data.approach || '',
+      complexity: data.complexity || 'medium',
+      dependencies: data.dependencies || [],
+      rawResponse: data.rawResponse || '',
+    });
+    res.status(201).json({ payload: encrypt(report, psk) });
+  });
+
+  // Approve evaluation report
+  router.post('/evaluations/:id/approve', (req: Request<{ id: string }>, res: Response) => {
+    const reportId = req.params.id;
+    const report = taskDB.updateReportStatus(reportId, 'approved');
+    if (!report) {
+      res.status(404).json({ error: 'Report not found' });
+      return;
+    }
+    res.json({ payload: encrypt(report, psk) });
+  });
+
+  // Reject evaluation report
+  router.post('/evaluations/:id/reject', (req: Request<{ id: string }>, res: Response) => {
+    const data = (req as any)._hubPayload;
+    const reportId = req.params.id;
+    const report = taskDB.updateReportStatus(reportId, 'rejected', data?.comment);
+    if (!report) {
+      res.status(404).json({ error: 'Report not found' });
+      return;
+    }
+    res.json({ payload: encrypt(report, psk) });
   });
 
   return router;
