@@ -5,9 +5,15 @@ import path from 'node:path';
 import fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { HubDB } from './db.js';
+import { RoomDB } from './db-rooms.js';
+import { TaskDB } from './db-tasks.js';
+import { TaskEngine } from './task-engine.js';
+import { WsHub } from './ws-server.js';
 import { createReportRouter } from './routes/report.js';
 import { createBroadcastRouter } from './routes/broadcast.js';
 import { createAdminRouter } from './routes/admin.js';
+import { createRoomsRouter } from './routes/rooms.js';
+import { createTasksRouter } from './routes/tasks.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PORT = parseInt(process.env.PORT || '5882', 10);
@@ -47,6 +53,9 @@ const updatesDir = path.join(DATA_DIR, 'updates', 'sman');
 fs.mkdirSync(updatesDir, { recursive: true });
 
 const db = new HubDB(path.join(DATA_DIR, 'hub.db'));
+const roomDB = new RoomDB(path.join(DATA_DIR, 'rooms.db'));
+const taskDB = new TaskDB(path.join(DATA_DIR, 'tasks.db'));
+const taskEngine = new TaskEngine(taskDB);
 const app = express();
 
 app.use(express.json({ limit: '1mb' }));
@@ -88,6 +97,8 @@ app.use('/api', createBroadcastRouter(db, PSK));
 app.get('/health', (_req, res) => res.json({ ok: true }));
 
 app.use('/admin', createAdminRouter(db, ADMIN_TOKEN, updatesDir));
+app.use('/admin', createRoomsRouter(roomDB, ADMIN_TOKEN));
+app.use('/admin', createTasksRouter(taskDB, ADMIN_TOKEN));
 
 // SPA static files (localhost only, production mode)
 const publicDir = path.join(__dirname, 'public');
@@ -107,15 +118,23 @@ const server = app.listen(PORT, () => {
   console.log(`Updates served at /updates/sman`);
 });
 
+const wsHub = new WsHub(server, roomDB, PSK, taskEngine);
+
 process.on('SIGTERM', () => {
+  wsHub.close();
   server.close(() => {
+    taskDB.close();
+    roomDB.close();
     db.close();
     process.exit(0);
   });
 });
 
 process.on('SIGINT', () => {
+  wsHub.close();
   server.close(() => {
+    taskDB.close();
+    roomDB.close();
     db.close();
     process.exit(0);
   });

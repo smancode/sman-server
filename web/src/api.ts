@@ -42,4 +42,12 @@ export const api = {
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     return res.text();
   },
+  getRooms: (token: string) => request('/rooms', token),
+  deleteRoom: (token: string, roomId: string) =>
+    request(`/rooms/${roomId}`, token, { method: 'DELETE' }),
+  getAgents: (token: string) => request('/agents', token),
+  getTasks: (token: string, status?: string) =>
+    request(status ? `/tasks?status=${status}` : '/tasks', token),
+  cancelTask: (token: string, taskId: string) =>
+    request(`/tasks/${taskId}/cancel`, token, { method: 'POST' }),
 };

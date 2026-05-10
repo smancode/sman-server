@@ -87,3 +87,104 @@ export interface AdminStats {
   /** Active broadcast messages */
   activeBroadcasts: number;
 }
+
+// ============================================================================
+// Room-based collaboration types
+// ============================================================================
+
+/** Agent status on the network */
+export type AgentStatus = 'online' | 'offline' | 'busy';
+
+/** Task lifecycle status (5-stage) */
+export type TaskStatus = 'queued' | 'dispatched' | 'running' | 'completed' | 'failed' | 'cancelled';
+
+/** Room role */
+export type RoomRole = 'owner' | 'member';
+
+/** Agent capabilities extracted from workspace */
+export interface AgentCapabilities {
+  skills: string[];
+  techStack: string[];
+  projectType: string;
+}
+
+/** Room record (maps to rooms table) */
+export interface RoomRecord {
+  id: string;
+  name: string;
+  description: string | null;
+  owner_id: string;
+  active: number;
+  max_agents: number;
+  created_at: string;
+}
+
+/** Room member record (maps to room_members table) */
+export interface RoomMemberRecord {
+  room_id: string;
+  client_id: string;
+  display_name: string;
+  role: RoomRole;
+  joined_at: string;
+}
+
+/** Agent record (maps to agents table) */
+export interface AgentRecord {
+  id: string;
+  room_id: string;
+  client_id: string;
+  workspace: string;
+  capabilities: string;
+  status: AgentStatus;
+  max_concurrent: number;
+  last_heartbeat: string;
+  registered_at: string;
+}
+
+/** Task record (maps to tasks table) */
+export interface TaskRecord {
+  id: string;
+  room_id: string;
+  title: string;
+  description: string | null;
+  status: TaskStatus;
+  priority: number;
+  created_by: string;
+  assigned_to: string | null;
+  context: string;
+  result: string | null;
+  error: string | null;
+  retry_count: number;
+  max_retries: number;
+  started_at: string | null;
+  completed_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+/** Task event audit log (maps to task_events table) */
+export interface TaskEventRecord {
+  id: number;
+  task_id: string;
+  event: string;
+  actor: string | null;
+  metadata: string;
+  created_at: string;
+}
+
+/** WS message envelope */
+export interface WsMessage {
+  type: string;
+  id?: string;
+  roomId?: string;
+  agentId?: string;
+  [key: string]: unknown;
+}
+
+/** WS auth message */
+export interface WsAuthMessage extends WsMessage {
+  type: 'auth.psk';
+  payload: EncryptedPayload;
+  timestamp: number;
+  pskVersion: number;
+}
