@@ -40,11 +40,15 @@ export function createHubApiRouter(roomDB: RoomDB, taskDB: TaskDB, psk: string):
         description: data.description,
         ownerId: data.ownerId || 'sman',
         maxAgents: data.maxAgents,
+        visibility: data.visibility || 'private',
       });
       res.status(201).json({ payload: encrypt(room, psk) });
       return;
     }
-    const rooms = roomDB.listRooms();
+    const clientId = data?.clientId;
+    const rooms = clientId
+      ? roomDB.listRoomsVisibleTo(clientId)
+      : roomDB.listRooms();
     const result = rooms.map(room => ({
       ...room,
       memberCount: roomDB.getMemberCount(room.id),

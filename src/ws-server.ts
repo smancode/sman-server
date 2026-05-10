@@ -182,6 +182,7 @@ export class WsHub {
       description: msg.description as string | undefined,
       ownerId: client.clientId,
       maxAgents: msg.maxAgents as number | undefined,
+      visibility: (msg.visibility as 'public' | 'private') || 'private',
     });
 
     this.subscribe(client, room.id);
@@ -233,7 +234,7 @@ export class WsHub {
   }
 
   private handleRoomList(client: AuthedClient): void {
-    const rooms = this.roomDB.listRooms();
+    const rooms = this.roomDB.listRoomsVisibleTo(client.clientId);
     this.send(client.ws, { type: 'room.list.update', rooms });
   }
 

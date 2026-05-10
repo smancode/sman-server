@@ -114,6 +114,7 @@ export interface RoomRecord {
   name: string;
   description: string | null;
   owner_id: string;
+  visibility: 'public' | 'private';
   active: number;
   max_agents: number;
   created_at: string;

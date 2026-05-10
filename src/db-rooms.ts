@@ -52,17 +52,22 @@ export class RoomDB {
       CREATE INDEX IF NOT EXISTS idx_agents_client ON agents(client_id);
       CREATE INDEX IF NOT EXISTS idx_rooms_active ON rooms(active);
     `);
+
+    // Migration: add visibility column
+    try {
+      this.db.exec(`ALTER TABLE rooms ADD COLUMN visibility TEXT NOT NULL DEFAULT 'private' CHECK(visibility IN ('public','private'))`);
+    } catch { /* column already exists */ }
   }
 
   // ---- Room CRUD ----
 
-  createRoom(params: { name: string; description?: string; ownerId: string; maxAgents?: number }): RoomRecord {
+  createRoom(params: { name: string; description?: string; ownerId: string; maxAgents?: number; visibility?: 'public' | 'private' }): RoomRecord {
     const id = crypto.randomUUID();
-    const now = new Date().toISOString();
+    const visibility = params.visibility || 'private';
     this.db.prepare(`
-      INSERT INTO rooms (id, name, description, owner_id, max_agents)
-      VALUES (?, ?, ?, ?, ?)
-    `).run(id, params.name, params.description ?? null, params.ownerId, params.maxAgents ?? 10);
+      INSERT INTO rooms (id, name, description, owner_id, max_agents, visibility)
+      VALUES (?, ?, ?, ?, ?, ?)
+    `).run(id, params.name, params.description ?? null, params.ownerId, params.maxAgents ?? 10, visibility);
 
     this.db.prepare(`
       INSERT INTO room_members (room_id, client_id, display_name, role)
@@ -78,6 +83,16 @@ export class RoomDB {
 
   listRooms(): RoomRecord[] {
     return this.db.prepare('SELECT * FROM rooms WHERE active = 1 ORDER BY created_at DESC').all() as RoomRecord[];
+  }
+
+  listRoomsVisibleTo(clientId: string): RoomRecord[] {
+    return this.db.prepare(`
+      SELECT r.* FROM rooms r
+      WHERE r.active = 1
+        AND (r.visibility = 'public'
+             OR EXISTS (SELECT 1 FROM room_members rm WHERE rm.room_id = r.id AND rm.client_id = ?))
+      ORDER BY r.created_at DESC
+    `).all(clientId) as RoomRecord[];
   }
 
   deactivateRoom(roomId: string): void {
