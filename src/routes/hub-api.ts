@@ -42,7 +42,7 @@ export function createHubApiRouter(roomDB: RoomDB, taskDB: TaskDB, psk: string):
         ownerId: data.ownerId || 'sman',
         maxAgents: data.maxAgents,
       });
-      res.status(201).json(encrypt(room, psk));
+      res.status(201).json({ payload: encrypt(room, psk) });
       return;
     }
     const rooms = roomDB.listRooms();
@@ -50,7 +50,7 @@ export function createHubApiRouter(roomDB: RoomDB, taskDB: TaskDB, psk: string):
       ...room,
       memberCount: roomDB.getMemberCount(room.id),
     }));
-    res.json(encrypt(result, psk));
+    res.json({ payload: encrypt(result, psk) });
   });
 
   // Get room detail
@@ -63,7 +63,7 @@ export function createHubApiRouter(roomDB: RoomDB, taskDB: TaskDB, psk: string):
     }
     const members = roomDB.getRoomMembers(room.id);
     const agents = roomDB.getRoomAgents(room.id);
-    res.json(encrypt({ room, members, agents }, psk));
+    res.json({ payload: encrypt({ room, members, agents }, psk) });
   });
 
   // Join room
@@ -80,7 +80,7 @@ export function createHubApiRouter(roomDB: RoomDB, taskDB: TaskDB, psk: string):
       res.status(409).json({ error: 'Cannot join room' });
       return;
     }
-    res.json(encrypt(member, psk));
+    res.json({ payload: encrypt(member, psk) });
   });
 
   // Leave room
@@ -93,7 +93,7 @@ export function createHubApiRouter(roomDB: RoomDB, taskDB: TaskDB, psk: string):
       return;
     }
     const left = roomDB.leaveRoom(roomId, clientId);
-    res.json(encrypt({ ok: left }, psk));
+    res.json({ payload: encrypt({ ok: left }, psk) });
   });
 
   // ---- Agents ----
@@ -101,7 +101,7 @@ export function createHubApiRouter(roomDB: RoomDB, taskDB: TaskDB, psk: string):
   router.post('/agents', (_req: Request, res: Response) => {
     const rooms = roomDB.listRooms();
     const allAgents = rooms.flatMap(room => roomDB.getRoomAgents(room.id));
-    res.json(encrypt(allAgents, psk));
+    res.json({ payload: encrypt(allAgents, psk) });
   });
 
   // ---- Tasks ----
@@ -122,7 +122,7 @@ export function createHubApiRouter(roomDB: RoomDB, taskDB: TaskDB, psk: string):
         context: data.context,
         createdBy: 'sman',
       });
-      res.status(201).json(encrypt(task, psk));
+      res.status(201).json({ payload: encrypt(task, psk) });
       return;
     }
     const roomId = data?.roomId;
@@ -131,7 +131,7 @@ export function createHubApiRouter(roomDB: RoomDB, taskDB: TaskDB, psk: string):
       return;
     }
     const tasks = taskDB.listRoomTasks(roomId);
-    res.json(encrypt(tasks, psk));
+    res.json({ payload: encrypt(tasks, psk) });
   });
 
   // Get task detail
@@ -143,7 +143,7 @@ export function createHubApiRouter(roomDB: RoomDB, taskDB: TaskDB, psk: string):
       return;
     }
     const events = taskDB.getTaskEvents(task.id);
-    res.json(encrypt({ task, events }, psk));
+    res.json({ payload: encrypt({ task, events }, psk) });
   });
 
   // Cancel task
@@ -155,7 +155,7 @@ export function createHubApiRouter(roomDB: RoomDB, taskDB: TaskDB, psk: string):
       return;
     }
     taskDB.transitionStatus(taskId, 'cancelled');
-    res.json(encrypt({ ok: true }, psk));
+    res.json({ payload: encrypt({ ok: true }, psk) });
   });
 
   return router;
