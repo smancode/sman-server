@@ -14,6 +14,7 @@ import { createBroadcastRouter } from './routes/broadcast.js';
 import { createAdminRouter } from './routes/admin.js';
 import { createRoomsRouter } from './routes/rooms.js';
 import { createTasksRouter } from './routes/tasks.js';
+import { createHubApiRouter } from './routes/hub-api.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PORT = parseInt(process.env.PORT || '5882', 10);
@@ -94,6 +95,7 @@ app.use('/updates', (_req, res) => res.status(404).send('Not found'));
 
 app.use('/api', createReportRouter(db, PSK));
 app.use('/api', createBroadcastRouter(db, PSK));
+app.use('/api/hub', createHubApiRouter(roomDB, taskDB, PSK));
 app.get('/health', (_req, res) => res.json({ ok: true }));
 
 app.use('/admin', createAdminRouter(db, ADMIN_TOKEN, updatesDir));
