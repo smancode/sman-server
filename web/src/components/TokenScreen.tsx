@@ -22,8 +22,9 @@ export function TokenScreen({ onLogin }: { onLogin: (token: string) => Promise<v
 
   return (
     <div className="token-screen">
-      <form onSubmit={handleSubmit}>
+      <form className="token-card" onSubmit={handleSubmit}>
         <h1>{t('app.title')}</h1>
+        <p className="token-subtitle">{t('token.subtitle')}</p>
         <input
           type="password"
           placeholder={t('token.placeholder')}

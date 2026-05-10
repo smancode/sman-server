@@ -1,9 +1,11 @@
 import { useEffect, useState } from 'react';
 import { api } from '../api';
 import { t, useLocale } from '../locales';
+import { useAuthStore } from '../stores/auth';
 import type { AdminStats } from '../types';
 
-export function DashboardTab({ token }: { token: string }) {
+export function DashboardTab() {
+  const token = useAuthStore((s) => s.token);
   const [stats, setStats] = useState<AdminStats | null>(null);
   const [error, setError] = useState('');
   useLocale();
@@ -21,7 +23,7 @@ export function DashboardTab({ token }: { token: string }) {
   useEffect(() => { load(); }, [token]);
 
   if (error) return <p className="error">{error}</p>;
-  if (!stats) return <p>{t('dashboard.loading')}</p>;
+  if (!stats) return <div className="loading-state">{t('dashboard.loading')}</div>;
 
   const cards = [
     { label: t('dashboard.totalClients'), value: stats.totalClients },
@@ -31,13 +33,18 @@ export function DashboardTab({ token }: { token: string }) {
   ];
 
   return (
-    <div className="dashboard">
-      {cards.map(c => (
-        <div key={c.label} className="stat-card">
-          <div className="stat-value">{c.value}</div>
-          <div className="stat-label">{c.label}</div>
-        </div>
-      ))}
+    <div>
+      <div className="page-header">
+        <h2 className="page-title">{t('tab.dashboard')}</h2>
+      </div>
+      <div className="page-grid">
+        {cards.map(c => (
+          <div key={c.label} className="stat-card">
+            <div className="stat-value">{c.value}</div>
+            <div className="stat-label">{c.label}</div>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }

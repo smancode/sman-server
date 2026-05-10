@@ -1,10 +1,11 @@
 import { useEffect, useState } from 'react';
 import { api } from '../api';
 import { t, useLocale } from '../locales';
-import type { Broadcast } from '../types';
+import { useAuthStore } from '../stores/auth';
 
-export function BroadcastsTab({ token }: { token: string }) {
-  const [broadcasts, setBroadcasts] = useState<Broadcast[]>([]);
+export function BroadcastsTab() {
+  const token = useAuthStore((s) => s.token);
+  const [broadcasts, setBroadcasts] = useState<{ id: string; title: string; body: string; created_at: string; active: number }[]>([]);
   const [error, setError] = useState('');
   const [title, setTitle] = useState('');
   const [body, setBody] = useState('');
@@ -13,7 +14,7 @@ export function BroadcastsTab({ token }: { token: string }) {
 
   const load = async () => {
     try {
-      const data = await api.getBroadcasts(token) as Broadcast[];
+      const data = await api.getBroadcasts(token) as { id: string; title: string; body: string; created_at: string; active: number }[];
       setBroadcasts(data);
       setError('');
     } catch {
@@ -54,6 +55,10 @@ export function BroadcastsTab({ token }: { token: string }) {
 
   return (
     <div>
+      <div className="page-header">
+        <h2 className="page-title">{t('tab.broadcasts')}</h2>
+      </div>
+
       <form className="form-section" onSubmit={handleCreate}>
         <h3>{t('broadcast.newTitle')}</h3>
         <input
@@ -67,7 +72,7 @@ export function BroadcastsTab({ token }: { token: string }) {
           onChange={e => setBody(e.target.value)}
           rows={3}
         />
-        <button type="submit" disabled={creating || !title.trim() || !body.trim()}>
+        <button className="btn-primary" type="submit" disabled={creating || !title.trim() || !body.trim()}>
           {creating ? t('broadcast.creating') : t('broadcast.create')}
         </button>
       </form>
@@ -91,10 +96,15 @@ export function BroadcastsTab({ token }: { token: string }) {
                 <td>{b.title}</td>
                 <td className="truncate">{b.body}</td>
                 <td>{new Date(b.created_at).toLocaleString()}</td>
-                <td>{b.active ? t('broadcast.active') : t('broadcast.inactive')}</td>
+                <td>
+                  {b.active
+                    ? <span className="badge badge-green"><span className="badge-dot" />{t('broadcast.active')}</span>
+                    : <span className="badge badge-gray">{t('broadcast.inactive')}</span>
+                  }
+                </td>
                 <td>
                   {b.active && (
-                    <button className="btn-sm" onClick={() => handleDeactivate(b.id)}>
+                    <button className="btn-outline" onClick={() => handleDeactivate(b.id)}>
                       {t('broadcast.deactivate')}
                     </button>
                   )}

@@ -1,17 +1,18 @@
 import { useState, useEffect } from 'react';
 import { api } from '../api';
 import { t, useLocale } from '../locales';
+import { useAuthStore } from '../stores/auth';
 
 const ALLOWED_EXTS = ['.yml', '.dmg', '.exe', '.blockmap'];
 
-export function UploadTab({ token }: { token: string }) {
+export function UploadTab() {
+  const token = useAuthStore((s) => s.token);
   const [file, setFile] = useState<File | null>(null);
   const [uploading, setUploading] = useState(false);
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
   useLocale();
 
-  // Publish form state
   const [version, setVersion] = useState('');
   const [downloadUrl, setDownloadUrl] = useState('');
   const [sha512, setSha512] = useState('');
@@ -84,53 +85,59 @@ export function UploadTab({ token }: { token: string }) {
 
   return (
     <div>
-      <form className="form-section" onSubmit={handlePublish}>
-        <h3>{t('upload.publishTitle')}</h3>
-        <p className="hint">{t('upload.publishHint')}</p>
-        <input
-          placeholder={t('upload.versionPlaceholder')}
-          value={version}
-          onChange={e => setVersion(e.target.value)}
-        />
-        <input
-          placeholder={t('upload.urlPlaceholder')}
-          value={downloadUrl}
-          onChange={e => setDownloadUrl(e.target.value)}
-        />
-        <input
-          placeholder={t('upload.shaPlaceholder')}
-          value={sha512}
-          onChange={e => setSha512(e.target.value)}
-        />
-        <input
-          type="number"
-          placeholder={t('upload.sizePlaceholder')}
-          value={fileSize}
-          onChange={e => setFileSize(e.target.value)}
-        />
-        <textarea
-          placeholder={t('upload.notesPlaceholder')}
-          value={releaseNotes}
-          onChange={e => setReleaseNotes(e.target.value)}
-          rows={4}
-        />
-        <button type="submit" disabled={publishing || !version.trim() || !downloadUrl.trim()}>
-          {publishing ? t('upload.publishing') : t('upload.publish')}
-        </button>
-      </form>
+      <div className="page-header">
+        <h2 className="page-title">{t('tab.upload')}</h2>
+      </div>
 
-      <form className="form-section" onSubmit={handleUpload}>
-        <h3>{t('upload.uploadTitle')}</h3>
-        <p className="hint">{t('upload.uploadHint')}</p>
-        <input
-          type="file"
-          accept=".yml,.dmg,.exe,.blockmap"
-          onChange={e => setFile(e.target.files?.[0] || null)}
-        />
-        <button type="submit" disabled={!file || uploading}>
-          {uploading ? t('upload.uploading') : t('upload.upload')}
-        </button>
-      </form>
+      <div className="forms-row">
+        <form className="form-section" onSubmit={handlePublish}>
+          <h3>{t('upload.publishTitle')}</h3>
+          <p className="hint">{t('upload.publishHint')}</p>
+          <input
+            placeholder={t('upload.versionPlaceholder')}
+            value={version}
+            onChange={e => setVersion(e.target.value)}
+          />
+          <input
+            placeholder={t('upload.urlPlaceholder')}
+            value={downloadUrl}
+            onChange={e => setDownloadUrl(e.target.value)}
+          />
+          <input
+            placeholder={t('upload.shaPlaceholder')}
+            value={sha512}
+            onChange={e => setSha512(e.target.value)}
+          />
+          <input
+            type="number"
+            placeholder={t('upload.sizePlaceholder')}
+            value={fileSize}
+            onChange={e => setFileSize(e.target.value)}
+          />
+          <textarea
+            placeholder={t('upload.notesPlaceholder')}
+            value={releaseNotes}
+            onChange={e => setReleaseNotes(e.target.value)}
+            rows={4}
+          />
+          <button className="btn-primary" type="submit" disabled={publishing || !version.trim() || !downloadUrl.trim()}>
+            {publishing ? t('upload.publishing') : t('upload.publish')}
+          </button>
+        </form>
+
+        <form className="form-section" onSubmit={handleUpload}>
+          <h3>{t('upload.uploadTitle')}</h3>
+          <p className="hint">{t('upload.uploadHint')}</p>
+          <input
+            type="file"
+            accept=".yml,.dmg,.exe,.blockmap"
+            onChange={e => setFile(e.target.files?.[0] || null)}
+          />
+          <button className="btn-primary" type="submit" disabled={!file || uploading}>
+            {uploading ? t('upload.uploading') : t('upload.upload')}
+          </button>
+        </form>
+      </div>
 
       {message && <p className="success">{message}</p>}
       {error && <p className="error">{error}</p>}
