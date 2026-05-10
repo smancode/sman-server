@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { api } from '../api';
+import { t, useLocale } from '../locales';
 import type { ClientRecord } from '../types';
 
 function formatDateTime(iso: string): string {
@@ -12,11 +13,12 @@ export function ClientsTab({ token }: { token: string }) {
   const [clients, setClients] = useState<ClientRecord[]>([]);
   const [error, setError] = useState('');
   const timerRef = useRef<ReturnType<typeof setInterval>>(undefined);
+  useLocale();
 
   const load = useCallback(() => {
     api.getClients(token)
       .then(data => { setClients(data as ClientRecord[]); setError(''); })
-      .catch(() => setError('Failed to load clients'));
+      .catch(() => setError(t('clients.loadFailed')));
   }, [token]);
 
   useEffect(() => {
@@ -26,19 +28,19 @@ export function ClientsTab({ token }: { token: string }) {
   }, [load]);
 
   if (error) return <p className="error">{error}</p>;
-  if (!clients.length) return <p>No clients registered yet.</p>;
+  if (!clients.length) return <p>{t('clients.noData')}</p>;
 
   return (
     <div className="table-wrap">
       <table className="data-table">
         <thead>
           <tr>
-            <th>Hostname</th>
-            <th>IP</th>
-            <th>Version</th>
-            <th>Sessions</th>
-            <th>Last Seen</th>
-            <th>First Seen</th>
+            <th>{t('clients.hostname')}</th>
+            <th>{t('clients.ip')}</th>
+            <th>{t('clients.version')}</th>
+            <th>{t('clients.sessions')}</th>
+            <th>{t('clients.lastSeen')}</th>
+            <th>{t('clients.firstSeen')}</th>
           </tr>
         </thead>
         <tbody>

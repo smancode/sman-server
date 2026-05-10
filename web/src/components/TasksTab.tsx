@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { api } from '../api';
+import { t, useLocale } from '../locales';
 
 interface Task {
   id: string;
@@ -35,16 +36,26 @@ const STATUS_COLORS: Record<string, string> = {
   cancelled: '#9ca3af',
 };
 
+const STATUS_KEYS: Record<string, string> = {
+  queued: 'tasks.statusQueued',
+  dispatched: 'tasks.statusDispatched',
+  running: 'tasks.statusRunning',
+  completed: 'tasks.statusCompleted',
+  failed: 'tasks.statusFailed',
+  cancelled: 'tasks.statusCancelled',
+};
+
 export function TasksTab({ token }: { token: string }) {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [error, setError] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
   const timerRef = useRef<ReturnType<typeof setInterval>>(undefined);
+  useLocale();
 
   const load = useCallback(() => {
     api.getTasks(token, statusFilter || undefined)
       .then(data => { setTasks(data as Task[]); setError(''); })
-      .catch(() => setError('Failed to load tasks'));
+      .catch(() => setError(t('tasks.loadFailed')));
   }, [token, statusFilter]);
 
   useEffect(() => {
@@ -54,10 +65,10 @@ export function TasksTab({ token }: { token: string }) {
   }, [load]);
 
   const handleCancel = (taskId: string) => {
-    if (!confirm('Cancel this task?')) return;
+    if (!confirm(t('tasks.cancelConfirm'))) return;
     api.cancelTask(token, taskId)
       .then(load)
-      .catch(() => setError('Failed to cancel task'));
+      .catch(() => setError(t('tasks.cancelFailed')));
   };
 
   if (error) return <p className="error">{error}</p>;
@@ -65,52 +76,52 @@ export function TasksTab({ token }: { token: string }) {
   return (
     <div>
       <div style={{ marginBottom: 12, display: 'flex', gap: 8, alignItems: 'center' }}>
-        <label>Filter by status:</label>
+        <label>{t('tasks.filterLabel')}</label>
         <select value={statusFilter} onChange={e => setStatusFilter(e.target.value)}>
-          <option value="">All</option>
-          <option value="queued">Queued</option>
-          <option value="dispatched">Dispatched</option>
-          <option value="running">Running</option>
-          <option value="completed">Completed</option>
-          <option value="failed">Failed</option>
-          <option value="cancelled">Cancelled</option>
+          <option value="">{t('tasks.filterAll')}</option>
+          <option value="queued">{t('tasks.statusQueued')}</option>
+          <option value="dispatched">{t('tasks.statusDispatched')}</option>
+          <option value="running">{t('tasks.statusRunning')}</option>
+          <option value="completed">{t('tasks.statusCompleted')}</option>
+          <option value="failed">{t('tasks.statusFailed')}</option>
+          <option value="cancelled">{t('tasks.statusCancelled')}</option>
         </select>
       </div>
       {!tasks.length ? (
-        <p>No tasks found.</p>
+        <p>{t('tasks.noData')}</p>
       ) : (
         <div className="table-wrap">
           <table className="data-table">
             <thead>
               <tr>
-                <th>Status</th>
-                <th>Title</th>
-                <th>Room</th>
-                <th>Assigned To</th>
-                <th>Retries</th>
-                <th>Started</th>
-                <th>Completed</th>
-                <th>Created</th>
-                <th>Actions</th>
+                <th>{t('tasks.colStatus')}</th>
+                <th>{t('tasks.colTitle')}</th>
+                <th>{t('tasks.colRoom')}</th>
+                <th>{t('tasks.colAssignedTo')}</th>
+                <th>{t('tasks.colRetries')}</th>
+                <th>{t('tasks.colStarted')}</th>
+                <th>{t('tasks.colCompleted')}</th>
+                <th>{t('tasks.colCreated')}</th>
+                <th>{t('tasks.colActions')}</th>
               </tr>
             </thead>
             <tbody>
-              {tasks.map(t => (
-                <tr key={t.id}>
+              {tasks.map(task => (
+                <tr key={task.id}>
                   <td>
-                    <span style={{ display: 'inline-block', width: 10, height: 10, borderRadius: '50%', background: STATUS_COLORS[t.status] || '#9ca3af' }} />
-                    {' '}{t.status}
+                    <span style={{ display: 'inline-block', width: 10, height: 10, borderRadius: '50%', background: STATUS_COLORS[task.status] || '#9ca3af' }} />
+                    {' '}{t(STATUS_KEYS[task.status] || task.status)}
                   </td>
-                  <td>{t.title}</td>
-                  <td className="mono">{t.room_id.slice(0, 8)}...</td>
-                  <td>{t.assigned_to ? t.assigned_to.slice(0, 12) : '-'}</td>
-                  <td>{t.retry_count}/{t.max_retries}</td>
-                  <td>{formatDateTime(t.started_at)}</td>
-                  <td>{formatDateTime(t.completed_at)}</td>
-                  <td>{formatDateTime(t.created_at)}</td>
+                  <td>{task.title}</td>
+                  <td className="mono">{task.room_id.slice(0, 8)}...</td>
+                  <td>{task.assigned_to ? task.assigned_to.slice(0, 12) : '-'}</td>
+                  <td>{task.retry_count}/{task.max_retries}</td>
+                  <td>{formatDateTime(task.started_at)}</td>
+                  <td>{formatDateTime(task.completed_at)}</td>
+                  <td>{formatDateTime(task.created_at)}</td>
                   <td>
-                    {(t.status === 'queued' || t.status === 'dispatched') && (
-                      <button className="btn-sm btn-danger" onClick={() => handleCancel(t.id)}>Cancel</button>
+                    {(task.status === 'queued' || task.status === 'dispatched') && (
+                      <button className="btn-sm btn-danger" onClick={() => handleCancel(task.id)}>{t('tasks.cancel')}</button>
                     )}
                   </td>
                 </tr>

@@ -1,10 +1,12 @@
 import { useEffect, useState } from 'react';
 import { api } from '../api';
+import { t, useLocale } from '../locales';
 import type { AdminStats } from '../types';
 
 export function DashboardTab({ token }: { token: string }) {
   const [stats, setStats] = useState<AdminStats | null>(null);
   const [error, setError] = useState('');
+  useLocale();
 
   const load = async () => {
     try {
@@ -12,20 +14,20 @@ export function DashboardTab({ token }: { token: string }) {
       setStats(data);
       setError('');
     } catch {
-      setError('Failed to load stats');
+      setError(t('dashboard.loadFailed'));
     }
   };
 
   useEffect(() => { load(); }, [token]);
 
   if (error) return <p className="error">{error}</p>;
-  if (!stats) return <p>Loading...</p>;
+  if (!stats) return <p>{t('dashboard.loading')}</p>;
 
   const cards = [
-    { label: 'Total Clients', value: stats.totalClients },
-    { label: 'Online (1h)', value: stats.onlineClients },
-    { label: 'Reports (24h)', value: stats.totalReports24h },
-    { label: 'Active Broadcasts', value: stats.activeBroadcasts },
+    { label: t('dashboard.totalClients'), value: stats.totalClients },
+    { label: t('dashboard.onlineClients'), value: stats.onlineClients },
+    { label: t('dashboard.reports24h'), value: stats.totalReports24h },
+    { label: t('dashboard.activeBroadcasts'), value: stats.activeBroadcasts },
   ];
 
   return (

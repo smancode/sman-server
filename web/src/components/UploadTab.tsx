@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { api } from '../api';
+import { t, useLocale } from '../locales';
 
 const ALLOWED_EXTS = ['.yml', '.dmg', '.exe', '.blockmap'];
 
@@ -8,6 +9,7 @@ export function UploadTab({ token }: { token: string }) {
   const [uploading, setUploading] = useState(false);
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
+  useLocale();
 
   // Publish form state
   const [version, setVersion] = useState('');
@@ -28,7 +30,7 @@ export function UploadTab({ token }: { token: string }) {
 
     const ext = file.name.substring(file.name.lastIndexOf('.')).toLowerCase();
     if (!ALLOWED_EXTS.includes(ext)) {
-      setError(`Unsupported file type: ${ext}`);
+      setError(t('upload.unsupportedType', { ext }));
       return;
     }
 
@@ -37,15 +39,20 @@ export function UploadTab({ token }: { token: string }) {
     setMessage('');
     try {
       const result = await api.uploadFile(token, file.name, file) as { ok: boolean; path: string; yml?: string; sha512?: string; version?: string; size: number };
-      let msg = `Uploaded: ${result.path} (${result.size} bytes)`;
       if (result.yml) {
-        msg += ` | latest.yml generated (v${result.version}, sha512: ${result.sha512?.substring(0, 16)}...)`;
+        setMessage(t('upload.uploadedWithYml', {
+          path: result.path,
+          size: String(result.size),
+          version: result.version || '',
+          sha512: result.sha512?.substring(0, 16) || '',
+        }));
         setYmlPreview(result.yml);
+      } else {
+        setMessage(t('upload.uploaded', { path: result.path, size: String(result.size) }));
       }
-      setMessage(msg);
       setFile(null);
     } catch {
-      setError('Upload failed');
+      setError(t('upload.uploadFailed'));
     } finally {
       setUploading(false);
     }
@@ -66,10 +73,10 @@ export function UploadTab({ token }: { token: string }) {
         size: fileSize ? parseInt(fileSize, 10) : undefined,
         releaseNotes: releaseNotes.trim() || undefined,
       }) as { ok: boolean; path: string; yml: string };
-      setMessage(`Published: ${result.path} (v${version})`);
+      setMessage(t('upload.published', { path: result.path, version }));
       if (result.yml) setYmlPreview(result.yml);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Publish failed');
+      setError(err instanceof Error ? err.message : t('upload.publishFailed'));
     } finally {
       setPublishing(false);
     }
@@ -78,50 +85,50 @@ export function UploadTab({ token }: { token: string }) {
   return (
     <div>
       <form className="form-section" onSubmit={handlePublish}>
-        <h3>Publish Update (External URL)</h3>
-        <p className="hint">Generate latest.yml pointing to a download URL (e.g. company disk server)</p>
+        <h3>{t('upload.publishTitle')}</h3>
+        <p className="hint">{t('upload.publishHint')}</p>
         <input
-          placeholder="Version (e.g. 26.5.0)"
+          placeholder={t('upload.versionPlaceholder')}
           value={version}
           onChange={e => setVersion(e.target.value)}
         />
         <input
-          placeholder="Download URL (e.g. https://disk.company.com/sman/Sman-Setup-26.5.0.exe)"
+          placeholder={t('upload.urlPlaceholder')}
           value={downloadUrl}
           onChange={e => setDownloadUrl(e.target.value)}
         />
         <input
-          placeholder="SHA512 hash (optional)"
+          placeholder={t('upload.shaPlaceholder')}
           value={sha512}
           onChange={e => setSha512(e.target.value)}
         />
         <input
           type="number"
-          placeholder="File size in bytes (optional)"
+          placeholder={t('upload.sizePlaceholder')}
           value={fileSize}
           onChange={e => setFileSize(e.target.value)}
         />
         <textarea
-          placeholder="Release notes (optional)"
+          placeholder={t('upload.notesPlaceholder')}
           value={releaseNotes}
           onChange={e => setReleaseNotes(e.target.value)}
           rows={4}
         />
         <button type="submit" disabled={publishing || !version.trim() || !downloadUrl.trim()}>
-          {publishing ? 'Publishing...' : 'Publish'}
+          {publishing ? t('upload.publishing') : t('upload.publish')}
         </button>
       </form>
 
       <form className="form-section" onSubmit={handleUpload}>
-        <h3>Upload File Directly</h3>
-        <p className="hint">Upload .yml, .dmg, .exe, .blockmap. Version auto-extracted from filename (e.g. Sman-Setup-26.5.0.exe → v26.5.0).</p>
+        <h3>{t('upload.uploadTitle')}</h3>
+        <p className="hint">{t('upload.uploadHint')}</p>
         <input
           type="file"
           accept=".yml,.dmg,.exe,.blockmap"
           onChange={e => setFile(e.target.files?.[0] || null)}
         />
         <button type="submit" disabled={!file || uploading}>
-          {uploading ? 'Uploading...' : 'Upload'}
+          {uploading ? t('upload.uploading') : t('upload.upload')}
         </button>
       </form>
 
@@ -130,7 +137,7 @@ export function UploadTab({ token }: { token: string }) {
 
       {ymlPreview && (
         <div className="form-section">
-          <h3>Current latest.yml</h3>
+          <h3>{t('upload.currentYml')}</h3>
           <pre className="yml-preview">{ymlPreview}</pre>
         </div>
       )}

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { api } from '../api';
+import { t, useLocale } from '../locales';
 
 interface Agent {
   id: string;
@@ -29,11 +30,12 @@ export function AgentsTab({ token }: { token: string }) {
   const [agents, setAgents] = useState<Agent[]>([]);
   const [error, setError] = useState('');
   const timerRef = useRef<ReturnType<typeof setInterval>>(undefined);
+  useLocale();
 
   const load = useCallback(() => {
     api.getAgents(token)
       .then(data => { setAgents(data as Agent[]); setError(''); })
-      .catch(() => setError('Failed to load agents'));
+      .catch(() => setError(t('agents.loadFailed')));
   }, [token]);
 
   useEffect(() => {
@@ -43,21 +45,21 @@ export function AgentsTab({ token }: { token: string }) {
   }, [load]);
 
   if (error) return <p className="error">{error}</p>;
-  if (!agents.length) return <p>No agents registered yet.</p>;
+  if (!agents.length) return <p>{t('agents.noData')}</p>;
 
   return (
     <div className="table-wrap">
       <table className="data-table">
         <thead>
           <tr>
-            <th>Status</th>
-            <th>ID</th>
-            <th>Room</th>
-            <th>Workspace</th>
-            <th>Capabilities</th>
-            <th>Max Concurrent</th>
-            <th>Last Heartbeat</th>
-            <th>Registered</th>
+            <th>{t('agents.colStatus')}</th>
+            <th>{t('agents.colId')}</th>
+            <th>{t('agents.colRoom')}</th>
+            <th>{t('agents.colWorkspace')}</th>
+            <th>{t('agents.colCapabilities')}</th>
+            <th>{t('agents.colMaxConcurrent')}</th>
+            <th>{t('agents.colLastHeartbeat')}</th>
+            <th>{t('agents.colRegistered')}</th>
           </tr>
         </thead>
         <tbody>

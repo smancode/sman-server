@@ -92,6 +92,16 @@ body {
 
 .btn-logout:hover { border-color: var(--text2); }
 
+.lang-select {
+  padding: 4px 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  font-size: 13px;
+  color: var(--text2);
+  background: var(--surface);
+  cursor: pointer;
+}
+
 /* Tabs */
 .tab-bar {
   display: flex;

@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { t } from '../locales';
 
 export function TokenScreen({ onLogin }: { onLogin: (token: string) => Promise<void> }) {
   const [value, setValue] = useState('');
@@ -13,7 +14,7 @@ export function TokenScreen({ onLogin }: { onLogin: (token: string) => Promise<v
     try {
       await onLogin(value.trim());
     } catch {
-      setError('Invalid token');
+      setError(t('token.invalid'));
     } finally {
       setLoading(false);
     }
@@ -22,16 +23,16 @@ export function TokenScreen({ onLogin }: { onLogin: (token: string) => Promise<v
   return (
     <div className="token-screen">
       <form onSubmit={handleSubmit}>
-        <h1>sman admin</h1>
+        <h1>{t('app.title')}</h1>
         <input
           type="password"
-          placeholder="Admin Token"
+          placeholder={t('token.placeholder')}
           value={value}
           onChange={e => setValue(e.target.value)}
           autoFocus
         />
         <button type="submit" disabled={loading || !value.trim()}>
-          {loading ? 'Connecting...' : 'Connect'}
+          {loading ? t('token.connecting') : t('token.connect')}
         </button>
         {error && <p className="error">{error}</p>}
       </form>
