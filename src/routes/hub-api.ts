@@ -36,13 +36,16 @@ export function createHubApiRouter(roomDB: RoomDB, taskDB: TaskDB, psk: string, 
   router.post('/rooms', (req: Request, res: Response) => {
     const data = (req as any)._hubPayload;
     if (data?.name) {
+      const ownerId = data.ownerId || 'sman';
       const room = roomDB.createRoom({
         name: data.name,
         description: data.description,
-        ownerId: data.ownerId || 'sman',
+        ownerId,
         maxAgents: data.maxAgents,
         visibility: data.visibility || 'private',
       });
+      // Auto-add owner as member
+      roomDB.joinRoom({ roomId: room.id, clientId: ownerId, displayName: ownerId, role: 'owner' });
       res.status(201).json({ payload: encrypt(room, psk) });
       return;
     }
