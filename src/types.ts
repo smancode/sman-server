@@ -96,7 +96,7 @@ export interface AdminStats {
 export type AgentStatus = 'online' | 'offline' | 'busy';
 
 /** Task lifecycle status */
-export type TaskStatus = 'draft' | 'evaluating' | 'confirmed' | 'rejected' | 'dispatched' | 'running' | 'completed' | 'failed' | 'cancelled' | 'queued';
+export type TaskStatus = 'draft' | 'evaluating' | 'confirmed' | 'rejected' | 'dispatched' | 'running' | 'stopping' | 'completed' | 'failed' | 'cancelled' | 'queued';
 
 /** Room role */
 export type RoomRole = 'owner' | 'member';

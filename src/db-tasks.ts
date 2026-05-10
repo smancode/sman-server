@@ -11,8 +11,9 @@ const VALID_TRANSITIONS: Record<TaskStatus, TaskStatus[]> = {
   evaluating: ['confirmed', 'rejected', 'cancelled'],
   confirmed: ['dispatched', 'cancelled'],
   rejected: ['draft', 'cancelled'],
-  dispatched: ['running', 'cancelled', 'failed'],
-  running: ['completed', 'failed', 'cancelled'],
+  dispatched: ['running', 'cancelled', 'failed', 'stopping'],
+  running: ['completed', 'failed', 'cancelled', 'stopping'],
+  stopping: ['cancelled', 'failed'],
   completed: [],
   failed: ['evaluating'], // retry: re-evaluate
   cancelled: [],

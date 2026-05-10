@@ -36,6 +36,13 @@ export class TaskEngine {
     return this.taskDB.transitionStatus(taskId, 'cancelled', cancelledBy, { reason: 'user_cancel' });
   }
 
+  stopTask(taskId: string, actor: string): TaskRecord | null {
+    const task = this.taskDB.getTask(taskId);
+    if (!task) return null;
+    if (task.status !== 'dispatched' && task.status !== 'running') return null;
+    return this.taskDB.transitionStatus(taskId, 'stopping', actor);
+  }
+
   // ---- Status Transitions ----
 
   rejectTask(taskId: string, actor: string, reason?: string): TaskRecord | null {
@@ -74,7 +81,9 @@ export class TaskEngine {
 
   failTask(taskId: string, agentId: string, error: string): TaskRecord | null {
     const task = this.taskDB.getTask(taskId);
-    if (!task || task.assigned_to !== agentId) return null;
+    if (!task) return null;
+    // Allow any assigned agent to fail when stopping
+    if (task.status !== 'stopping' && task.assigned_to !== agentId) return null;
 
     this.taskDB.setError(taskId, error);
 

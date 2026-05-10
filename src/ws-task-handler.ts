@@ -22,6 +22,8 @@ export function createTaskHandler(engine: TaskEngine, wsHub: WsHub) {
           case 'task.complete': this.handleComplete(client, msg); return true;
           case 'task.fail': this.handleFail(client, msg); return true;
           case 'task.cancel': this.handleCancel(client, msg); return true;
+          case 'task.stop': this.handleStop(client, msg); return true;
+          case 'task.stop.ack': this.handleStopAck(client, msg); return true;
           case 'task.list': this.handleList(client, msg); return true;
           case 'task.detail': this.handleDetail(client, msg); return true;
           case 'task.confirm': this.handleConfirm(client, msg); return true;
@@ -158,6 +160,36 @@ export function createTaskHandler(engine: TaskEngine, wsHub: WsHub) {
       }
       send(client.ws, { type: 'task.cancelled', task });
       wsHub.broadcastToRoom(task.room_id, { type: 'task.cancelled', task });
+    },
+
+    handleStop(client: AuthedClient, msg: WsMessage): void {
+      const taskId = msg.taskId as string;
+      const task = engine.stopTask(taskId, client.clientId);
+      if (!task) {
+        send(client.ws, { type: 'task.error', reason: 'Cannot stop task (must be dispatched or running)' });
+        return;
+      }
+      send(client.ws, { type: 'task.stopping', task });
+      wsHub.broadcastToRoom(task.room_id, { type: 'task.stopping', task });
+
+      // Notify each assigned agent to stop
+      const assignments = engine.getAssignments(taskId);
+      for (const a of assignments) {
+        wsHub.sendToAgent(a.agent_id, {
+          type: 'task.stopping_to',
+          taskId,
+          agentId: a.agent_id,
+        });
+      }
+    },
+
+    handleStopAck(_client: AuthedClient, msg: WsMessage): void {
+      const taskId = msg.taskId as string;
+      const agentId = msg.agentId as string;
+      engine.updateAssignmentStatus(
+        engine.getAssignments(taskId).find(a => a.agent_id === agentId)?.id || '',
+        'failed',
+      );
     },
 
     handleList(client: AuthedClient, msg: WsMessage): void {

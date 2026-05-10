@@ -2,11 +2,12 @@ import { Router } from 'express';
 import type { Request, Response } from 'express';
 import type { RoomDB } from '../db-rooms.js';
 import type { TaskDB } from '../db-tasks.js';
+import type { TaskEngine } from '../task-engine.js';
 import { decrypt, encrypt } from '../crypto.js';
 
 const REPLAY_WINDOW_MS = 5 * 60 * 1000;
 
-export function createHubApiRouter(roomDB: RoomDB, taskDB: TaskDB, psk: string): Router {
+export function createHubApiRouter(roomDB: RoomDB, taskDB: TaskDB, psk: string, taskEngine?: TaskEngine): Router {
   const router = Router();
 
   // PSK auth middleware — all routes carry encrypted payload in body
@@ -96,6 +97,43 @@ export function createHubApiRouter(roomDB: RoomDB, taskDB: TaskDB, psk: string):
     res.json({ payload: encrypt({ ok: left }, psk) });
   });
 
+  router.post('/rooms/:id/agents', (req: Request<{ id: string }>, res: Response) => {
+    const roomId = req.params.id;
+    const agents = roomDB.getRoomAgents(roomId);
+    res.json({ payload: encrypt(agents, psk) });
+  });
+
+  router.post('/rooms/:id/dissolve', (req: Request<{ id: string }>, res: Response) => {
+    const data = (req as any)._hubPayload;
+    const roomId = req.params.id;
+    const clientId = data?.clientId;
+    if (!clientId) {
+      res.status(400).json({ error: 'clientId is required' });
+      return;
+    }
+    const room = roomDB.getRoom(roomId);
+    if (!room) {
+      res.status(404).json({ error: 'Room not found' });
+      return;
+    }
+    if (room.owner_id !== clientId) {
+      res.status(403).json({ error: 'Only owner can dissolve room' });
+      return;
+    }
+    // Check for active tasks
+    if (taskEngine) {
+      for (const status of ['dispatched', 'running', 'stopping'] as const) {
+        const tasks = taskEngine.getRoomTasks(roomId, status);
+        if (tasks.length > 0) {
+          res.status(409).json({ error: 'Cannot dissolve: room has active tasks. Stop them first.' });
+          return;
+        }
+      }
+    }
+    roomDB.deactivateRoom(roomId);
+    res.json({ payload: encrypt({ ok: true, roomId }, psk) });
+  });
+
   // ---- Agents ----
 
   router.post('/agents', (_req: Request, res: Response) => {
@@ -160,6 +198,22 @@ export function createHubApiRouter(roomDB: RoomDB, taskDB: TaskDB, psk: string):
     }
     taskDB.transitionStatus(taskId, 'cancelled', data?.cancelledBy);
     res.json({ payload: encrypt({ ok: true }, psk) });
+  });
+
+  // Stop task (notifies assigned agents)
+  router.post('/tasks/:id/stop', (req: Request<{ id: string }>, res: Response) => {
+    const data = (req as any)._hubPayload;
+    const taskId = req.params.id;
+    if (!taskEngine) {
+      res.status(500).json({ error: 'Task engine not available' });
+      return;
+    }
+    const task = taskEngine.stopTask(taskId, data?.actor);
+    if (!task) {
+      res.status(409).json({ error: 'Cannot stop task (must be dispatched or running)' });
+      return;
+    }
+    res.json({ payload: encrypt(task, psk) });
   });
 
   // Confirm task

@@ -95,7 +95,7 @@ app.use('/updates', (_req, res) => res.status(404).send('Not found'));
 
 app.use('/api', createReportRouter(db, PSK));
 app.use('/api', createBroadcastRouter(db, PSK));
-app.use('/api/hub', createHubApiRouter(roomDB, taskDB, PSK));
+app.use('/api/hub', createHubApiRouter(roomDB, taskDB, PSK, taskEngine));
 app.get('/health', (_req, res) => res.json({ ok: true }));
 
 app.use('/admin', createAdminRouter(db, ADMIN_TOKEN, updatesDir));

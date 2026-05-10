@@ -3,7 +3,7 @@ import type { Server } from 'node:http';
 import nodeCrypto from 'node:crypto';
 import { decrypt } from './crypto.js';
 import { RoomDB } from './db-rooms.js';
-import type { WsMessage, WsAuthMessage } from './types.js';
+import type { WsMessage, WsAuthMessage, TaskStatus } from './types.js';
 import type { TaskEngine } from './task-engine.js';
 import { createTaskHandler } from './ws-task-handler.js';
 
@@ -25,10 +25,12 @@ export class WsHub {
   private psk: string;
   private staleCheckTimer: ReturnType<typeof setInterval> | null = null;
   private taskHandler: ReturnType<typeof createTaskHandler> | null = null;
+  private taskEngine: TaskEngine | null = null;
 
   constructor(server: Server, roomDB: RoomDB, psk: string, taskEngine?: TaskEngine) {
     this.roomDB = roomDB;
     this.psk = psk;
+    this.taskEngine = taskEngine ?? null;
     this.wss = new WebSocketServer({ server, path: '/ws' });
     if (taskEngine) {
       this.taskHandler = createTaskHandler(taskEngine, this);
@@ -148,6 +150,9 @@ export class WsHub {
       case 'room.list':
         this.handleRoomList(client);
         break;
+      case 'room.dissolve':
+        this.handleRoomDissolve(client, msg);
+        break;
       case 'room.info':
         this.handleRoomInfo(client, msg);
         break;
@@ -231,6 +236,37 @@ export class WsHub {
         clientId: client.clientId,
       });
     }
+  }
+
+  private handleRoomDissolve(client: AuthedClient, msg: WsMessage): void {
+    const roomId = msg.roomId as string;
+    if (!roomId) return;
+
+    const room = this.roomDB.getRoom(roomId);
+    if (!room) {
+      this.sendError(client.ws, 'Room not found');
+      return;
+    }
+    if (room.owner_id !== client.clientId) {
+      this.sendError(client.ws, 'Only owner can dissolve room');
+      return;
+    }
+
+    // Check for active tasks
+    if (this.taskHandler) {
+      const activeStatuses: TaskStatus[] = ['dispatched', 'running', 'stopping'];
+      for (const status of activeStatuses) {
+        const tasks = this.taskEngine?.getRoomTasks(roomId, status);
+        if (tasks && tasks.length > 0) {
+          this.sendError(client.ws, 'Cannot dissolve: room has active tasks. Stop them first.');
+          return;
+        }
+      }
+    }
+
+    this.roomDB.deactivateRoom(roomId);
+    this.broadcastToRoom(roomId, { type: 'room.dissolved', roomId });
+    this.rooms.delete(roomId);
   }
 
   private handleRoomList(client: AuthedClient): void {
