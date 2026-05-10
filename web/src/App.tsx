@@ -10,6 +10,7 @@ import { RoomsTab } from './components/RoomsTab';
 import { AgentsTab } from './components/AgentsTab';
 import { TasksTab } from './components/TasksTab';
 import { useAuthStore } from './stores/auth';
+import { useThemeStore } from './stores/theme';
 
 type Tab = 'dashboard' | 'clients' | 'broadcasts' | 'upload' | 'rooms' | 'agents' | 'tasks';
 
@@ -30,6 +31,7 @@ const GROUP_LABELS: Record<string, string> = {
 
 export function App() {
   const { token, setToken, clearToken } = useAuthStore();
+  const { theme, toggle: toggleTheme } = useThemeStore();
   const [tab, setTab] = useState<Tab>('dashboard');
   const locale = useLocale();
 
@@ -86,6 +88,9 @@ export function App() {
               <option value="zh-CN">中文</option>
               <option value="en-US">English</option>
             </select>
+            <button className="btn-theme-toggle" onClick={toggleTheme} title={theme === 'light' ? 'Dark mode' : 'Light mode'}>
+              {theme === 'light' ? '☾' : '☀'}
+            </button>
           </div>
           <button className="btn-sidebar-logout" onClick={handleLogout}>
             {t('app.logout')}
