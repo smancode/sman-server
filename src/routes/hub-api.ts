@@ -3,11 +3,12 @@ import type { Request, Response } from 'express';
 import type { RoomDB } from '../db-rooms.js';
 import type { TaskDB } from '../db-tasks.js';
 import type { TaskEngine } from '../task-engine.js';
+import type { HubDB } from '../db.js';
 import { decrypt, encrypt } from '../crypto.js';
 
 const REPLAY_WINDOW_MS = 5 * 60 * 1000;
 
-export function createHubApiRouter(roomDB: RoomDB, taskDB: TaskDB, psk: string, taskEngine?: TaskEngine): Router {
+export function createHubApiRouter(roomDB: RoomDB, taskDB: TaskDB, psk: string, taskEngine: TaskEngine | undefined, hubDB: HubDB): Router {
   const router = Router();
 
   // PSK auth middleware — all routes carry encrypted payload in body
@@ -338,6 +339,12 @@ export function createHubApiRouter(roomDB: RoomDB, taskDB: TaskDB, psk: string, 
       return;
     }
     res.json({ payload: encrypt(report, psk) });
+  });
+
+  // Stardom dev-mode (read-only for clients)
+  router.post('/stardom-dev-mode', (_req: Request, res: Response) => {
+    const val = hubDB.getSetting('stardom_dev_mode');
+    res.json({ payload: encrypt({ enabled: val === '1' }, psk) });
   });
 
   return router;
