@@ -99,8 +99,8 @@ export class RoomDB {
     const params: unknown[] = [clientId];
 
     if (search) {
-      sql += ` AND r.name LIKE ?`;
-      params.push(`%${search}%`);
+      sql += ` AND (r.name LIKE ? OR r.owner_id LIKE ?)`;
+      params.push(`%${search}%`, `%${search}%`);
     }
 
     sql += ` ORDER BY r.created_at DESC LIMIT ? OFFSET ?`;
@@ -118,8 +118,8 @@ export class RoomDB {
     `;
     const params: unknown[] = [clientId];
     if (search?.trim()) {
-      sql += ` AND r.name LIKE ?`;
-      params.push(`%${search.trim()}%`);
+      sql += ` AND (r.name LIKE ? OR r.owner_id LIKE ?)`;
+      params.push(`%${search.trim()}%`, `%${search.trim()}%`);
     }
     const row = this.db.prepare(sql).get(...params) as { cnt: number };
     return row.cnt;
