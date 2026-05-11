@@ -50,14 +50,20 @@ export function createHubApiRouter(roomDB: RoomDB, taskDB: TaskDB, psk: string, 
       return;
     }
     const clientId = data?.clientId;
+    const search = data?.search as string | undefined;
+    const limit = typeof data?.limit === 'number' ? data.limit : 10;
+    const offset = typeof data?.offset === 'number' ? data.offset : 0;
     const rooms = clientId
-      ? roomDB.listRoomsVisibleTo(clientId)
+      ? roomDB.listRoomsVisibleTo(clientId, { search, limit, offset })
       : roomDB.listRooms();
+    const total = clientId
+      ? roomDB.countRoomsVisibleTo(clientId, search)
+      : rooms.length;
     const result = rooms.map(room => ({
       ...room,
       memberCount: roomDB.getMemberCount(room.id),
     }));
-    res.json({ payload: encrypt(result, psk) });
+    res.json({ payload: encrypt({ rooms: result, total }, psk) });
   });
 
   router.post('/rooms/:id', (req: Request<{ id: string }>, res: Response) => {

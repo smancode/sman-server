@@ -85,14 +85,44 @@ export class RoomDB {
     return this.db.prepare('SELECT * FROM rooms WHERE active = 1 ORDER BY created_at DESC').all() as RoomRecord[];
   }
 
-  listRoomsVisibleTo(clientId: string): RoomRecord[] {
-    return this.db.prepare(`
+  listRoomsVisibleTo(clientId: string, opts?: { search?: string; limit?: number; offset?: number }): RoomRecord[] {
+    const search = opts?.search?.trim();
+    const limit = opts?.limit ?? 10;
+    const offset = opts?.offset ?? 0;
+
+    let sql = `
       SELECT r.* FROM rooms r
       WHERE r.active = 1
         AND (r.visibility = 'public'
              OR EXISTS (SELECT 1 FROM room_members rm WHERE rm.room_id = r.id AND rm.client_id = ?))
-      ORDER BY r.created_at DESC
-    `).all(clientId) as RoomRecord[];
+    `;
+    const params: unknown[] = [clientId];
+
+    if (search) {
+      sql += ` AND r.name LIKE ?`;
+      params.push(`%${search}%`);
+    }
+
+    sql += ` ORDER BY r.created_at DESC LIMIT ? OFFSET ?`;
+    params.push(limit, offset);
+
+    return this.db.prepare(sql).all(...params) as RoomRecord[];
+  }
+
+  countRoomsVisibleTo(clientId: string, search?: string): number {
+    let sql = `
+      SELECT COUNT(*) as cnt FROM rooms r
+      WHERE r.active = 1
+        AND (r.visibility = 'public'
+             OR EXISTS (SELECT 1 FROM room_members rm WHERE rm.room_id = r.id AND rm.client_id = ?))
+    `;
+    const params: unknown[] = [clientId];
+    if (search?.trim()) {
+      sql += ` AND r.name LIKE ?`;
+      params.push(`%${search.trim()}%`);
+    }
+    const row = this.db.prepare(sql).get(...params) as { cnt: number };
+    return row.cnt;
   }
 
   deactivateRoom(roomId: string): void {
