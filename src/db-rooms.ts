@@ -57,17 +57,22 @@ export class RoomDB {
     try {
       this.db.exec(`ALTER TABLE rooms ADD COLUMN visibility TEXT NOT NULL DEFAULT 'private' CHECK(visibility IN ('public','private'))`);
     } catch { /* column already exists */ }
+
+    // Migration: add password column
+    try {
+      this.db.exec(`ALTER TABLE rooms ADD COLUMN password TEXT`);
+    } catch { /* column already exists */ }
   }
 
   // ---- Room CRUD ----
 
-  createRoom(params: { name: string; description?: string; ownerId: string; maxAgents?: number; visibility?: 'public' | 'private' }): RoomRecord {
+  createRoom(params: { name: string; description?: string; ownerId: string; maxAgents?: number; visibility?: 'public' | 'private'; password?: string }): RoomRecord {
     const id = crypto.randomUUID();
     const visibility = params.visibility || 'private';
     this.db.prepare(`
-      INSERT INTO rooms (id, name, description, owner_id, max_agents, visibility)
-      VALUES (?, ?, ?, ?, ?, ?)
-    `).run(id, params.name, params.description ?? null, params.ownerId, params.maxAgents ?? 10, visibility);
+      INSERT INTO rooms (id, name, description, owner_id, max_agents, visibility, password)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
+    `).run(id, params.name, params.description ?? null, params.ownerId, params.maxAgents ?? 10, visibility, params.password || null);
 
     this.db.prepare(`
       INSERT INTO room_members (room_id, client_id, display_name, role)

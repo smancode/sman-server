@@ -44,6 +44,7 @@ export function createHubApiRouter(roomDB: RoomDB, taskDB: TaskDB, psk: string, 
         ownerId,
         maxAgents: data.maxAgents,
         visibility: data.visibility || 'private',
+        password: data.password || undefined,
       });
       // Auto-add owner as member
       roomDB.joinRoom({ roomId: room.id, clientId: ownerId, displayName: ownerId, role: 'owner' });
@@ -60,10 +61,15 @@ export function createHubApiRouter(roomDB: RoomDB, taskDB: TaskDB, psk: string, 
     const total = clientId
       ? roomDB.countRoomsVisibleTo(clientId, search)
       : rooms.length;
-    const result = rooms.map(room => ({
-      ...room,
-      memberCount: roomDB.getMemberCount(room.id),
-    }));
+    const result = rooms.map(room => {
+      const { password, ...rest } = room;
+      return {
+        ...rest,
+        memberCount: roomDB.getMemberCount(room.id),
+        isMember: clientId ? roomDB.isMember(room.id, clientId) : false,
+        hasPassword: !!password,
+      };
+    });
     res.json({ payload: encrypt({ rooms: result, total }, psk) });
   });
 
@@ -82,14 +88,23 @@ export function createHubApiRouter(roomDB: RoomDB, taskDB: TaskDB, psk: string, 
   router.post('/rooms/:id/join', (req: Request<{ id: string }>, res: Response) => {
     const data = (req as any)._hubPayload;
     const roomId = req.params.id;
-    const { clientId, displayName } = data;
+    const { clientId, displayName, password } = data;
     if (!clientId) {
       res.status(400).json({ error: 'clientId is required' });
       return;
     }
+    const room = roomDB.getRoom(roomId);
+    if (!room || !room.active) {
+      res.status(404).json({ error: 'Room not found' });
+      return;
+    }
+    if (room.password && room.password !== password) {
+      res.status(403).json({ error: 'Wrong password' });
+      return;
+    }
     const member = roomDB.joinRoom({ roomId, clientId, displayName: displayName || clientId });
     if (!member) {
-      res.status(409).json({ error: 'Cannot join room' });
+      res.status(409).json({ error: 'Room is full' });
       return;
     }
     res.json({ payload: encrypt(member, psk) });

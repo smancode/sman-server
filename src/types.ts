@@ -118,6 +118,7 @@ export interface RoomRecord {
   active: number;
   max_agents: number;
   created_at: string;
+  password: string | null;
 }
 
 /** Room member record (maps to room_members table) */
