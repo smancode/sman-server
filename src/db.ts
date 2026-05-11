@@ -87,6 +87,13 @@ export class HubDB {
       CREATE INDEX IF NOT EXISTS idx_reports_client ON reports(client_id);
       CREATE INDEX IF NOT EXISTS idx_reports_time ON reports(report_time);
       CREATE INDEX IF NOT EXISTS idx_broadcasts_active ON broadcasts(active);
+
+      CREATE TABLE IF NOT EXISTS hub_settings (
+        key TEXT PRIMARY KEY,
+        value TEXT NOT NULL,
+        updated_at TEXT DEFAULT (datetime('now', 'localtime'))
+      );
+      INSERT OR IGNORE INTO hub_settings (key, value) VALUES ('stardom_dev_mode', '0');
     `);
   }
 
@@ -177,6 +184,18 @@ export class HubDB {
       "SELECT COUNT(*) as c FROM broadcasts WHERE active = 1"
     ).get() as { c: number }).c;
     return { totalClients, onlineClients, totalReports24h, activeBroadcasts };
+  }
+
+  getSetting(key: string): string | undefined {
+    const row = this.db.prepare('SELECT value FROM hub_settings WHERE key = ?').get(key) as { value: string } | undefined;
+    return row?.value;
+  }
+
+  setSetting(key: string, value: string): void {
+    this.db.prepare(`
+      INSERT INTO hub_settings (key, value, updated_at) VALUES (?, ?, datetime('now', 'localtime'))
+      ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at
+    `).run(key, value);
   }
 
   close(): void {

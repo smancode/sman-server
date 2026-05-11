@@ -91,4 +91,20 @@ describe('HubDB', () => {
       expect(stats.totalClients).toBe(2);
     });
   });
+
+  describe('hub_settings', () => {
+    it('should return default value for stardom_dev_mode', () => {
+      const val = db.getSetting('stardom_dev_mode');
+      expect(val).toBe('0');
+    });
+
+    it('should update and retrieve setting', () => {
+      db.setSetting('stardom_dev_mode', '1');
+      expect(db.getSetting('stardom_dev_mode')).toBe('1');
+    });
+
+    it('should return undefined for unknown key', () => {
+      expect(db.getSetting('nonexistent')).toBeUndefined();
+    });
+  });
 });
