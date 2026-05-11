@@ -63,11 +63,15 @@ export function createHubApiRouter(roomDB: RoomDB, taskDB: TaskDB, psk: string, 
       : rooms.length;
     const result = rooms.map(room => {
       const { password, ...rest } = room;
+      const cidUser = clientId ? clientId.split('@')[0] : '';
+      const ownerUser = room.owner_id ? room.owner_id.split('@')[0] : '';
+      const isOwner = clientId && (room.owner_id === clientId || (cidUser && ownerUser && cidUser === ownerUser));
       return {
         ...rest,
         memberCount: roomDB.getMemberCount(room.id),
         isMember: clientId ? roomDB.isMember(room.id, clientId) : false,
         hasPassword: !!password,
+        ...(isOwner && password ? { password } : {}),
       };
     });
     res.json({ payload: encrypt({ rooms: result, total }, psk) });
