@@ -345,6 +345,7 @@ body {
   padding: 10px 14px;
   text-align: left;
   font-size: 13px;
+  white-space: nowrap;
   border-bottom: 1px solid var(--border);
 }
 

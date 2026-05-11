@@ -12,8 +12,9 @@ interface Room {
   active: number;
   max_agents: number;
   created_at: string;
-  member_count: number;
-  agent_count: number;
+  visibility: string;
+  password: string | null;
+  memberCount: number;
 }
 
 export function RoomsTab() {
@@ -53,8 +54,10 @@ export function RoomsTab() {
               <th>{t('rooms.colName')}</th>
               <th>{t('rooms.colDescription')}</th>
               <th>{t('rooms.colOwner')}</th>
+              <th>{t('rooms.colVisibility')}</th>
+              <th>{t('rooms.colPassword')}</th>
+              <th>{t('rooms.colMaxAgents')}</th>
               <th>{t('rooms.colMembers')}</th>
-              <th>{t('rooms.colAgents')}</th>
               <th>{t('rooms.colActive')}</th>
               <th>{t('rooms.colCreated')}</th>
               <th>{t('rooms.colActions')}</th>
@@ -63,12 +66,14 @@ export function RoomsTab() {
           <tbody>
             {rooms.map(r => (
               <tr key={r.id}>
-                <td className="mono">{r.id.slice(0, 8)}...</td>
+                <td className="mono">{r.id}</td>
                 <td>{r.name}</td>
                 <td>{r.description || '-'}</td>
-                <td className="mono">{r.owner_id.slice(0, 8)}...</td>
-                <td>{r.member_count ?? '-'}</td>
-                <td>{r.agent_count ?? '-'}</td>
+                <td className="mono">{r.owner_id}</td>
+                <td>{r.visibility || '-'}</td>
+                <td className="mono">{r.password || '-'}</td>
+                <td>{r.max_agents}</td>
+                <td>{r.memberCount ?? '-'}</td>
                 <td>
                   {r.active
                     ? <span className="badge badge-green"><span className="badge-dot" />{t('rooms.active')}</span>
