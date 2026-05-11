@@ -8,6 +8,8 @@ export function DashboardTab() {
   const token = useAuthStore((s) => s.token);
   const [stats, setStats] = useState<AdminStats | null>(null);
   const [error, setError] = useState('');
+  const [stardomDev, setStardomDev] = useState(false);
+  const [loadingToggle, setLoadingToggle] = useState(false);
   useLocale();
 
   const load = async () => {
@@ -21,6 +23,25 @@ export function DashboardTab() {
   };
 
   useEffect(() => { load(); }, [token]);
+
+  useEffect(() => {
+    if (!token) return;
+    (async () => {
+      try {
+        const data = await api.getStardomDevMode(token) as { enabled: boolean };
+        setStardomDev(data.enabled);
+      } catch { /* ignore */ }
+    })();
+  }, [token]);
+
+  const handleToggleStardom = async (enabled: boolean) => {
+    setLoadingToggle(true);
+    try {
+      await api.setStardomDevMode(token!, enabled);
+      setStardomDev(enabled);
+    } catch { /* ignore */ }
+    setLoadingToggle(false);
+  };
 
   if (error) return <p className="error">{error}</p>;
   if (!stats) return <div className="loading-state">{t('dashboard.loading')}</div>;
@@ -44,6 +65,19 @@ export function DashboardTab() {
             <div className="stat-label">{c.label}</div>
           </div>
         ))}
+        <div className="stat-card" style={{ gridColumn: '1 / -1', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <div>
+            <div style={{ fontWeight: 600 }}>{t('dashboard.stardomDevMode')}</div>
+            <div style={{ fontSize: '0.8em', opacity: 0.6 }}>{t('dashboard.stardomDevModeHint')}</div>
+          </div>
+          <button
+            className={`btn ${stardomDev ? 'btn-primary' : 'btn-secondary'}`}
+            disabled={loadingToggle}
+            onClick={() => handleToggleStardom(!stardomDev)}
+          >
+            {stardomDev ? t('broadcast.active') : t('broadcast.inactive')}
+          </button>
+        </div>
       </div>
     </div>
   );

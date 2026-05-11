@@ -124,5 +124,7 @@
   "tasks.loadFailed": { "text": "加载任务列表失败" },
   "tasks.cancelFailed": { "text": "取消任务失败" },
 
-  "common.languageSwitch": { "text": "语言" }
+  "common.languageSwitch": { "text": "语言" },
+  "dashboard.stardomDevMode": { "text": "协作星图开发模式" },
+  "dashboard.stardomDevModeHint": { "text": "开启后客户端可进入协作星图页面" }
 }

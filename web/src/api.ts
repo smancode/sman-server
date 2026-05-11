@@ -50,4 +50,7 @@ export const api = {
     request(status ? `/tasks?status=${status}` : '/tasks', token),
   cancelTask: (token: string, taskId: string) =>
     request(`/tasks/${taskId}/cancel`, token, { method: 'POST' }),
+  getStardomDevMode: (token: string) => request('/stardom-dev-mode', token),
+  setStardomDevMode: (token: string, enabled: boolean) =>
+    request('/stardom-dev-mode', token, { method: 'PUT', body: JSON.stringify({ enabled }) }),
 };
