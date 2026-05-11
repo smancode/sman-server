@@ -18,6 +18,9 @@ importers:
         specifier: ^5.0.13
         version: 5.0.13(@types/react@19.2.14)(react@19.2.6)
     devDependencies:
+      '@rollup/rollup-win32-x64-msvc':
+        specifier: ^4.60.3
+        version: 4.60.3
       '@types/react':
         specifier: ^19.1.0
         version: 19.2.14
@@ -947,8 +950,7 @@ snapshots:
   '@rollup/rollup-win32-x64-gnu@4.60.3':
     optional: true
 
-  '@rollup/rollup-win32-x64-msvc@4.60.3':
-    optional: true
+  '@rollup/rollup-win32-x64-msvc@4.60.3': {}
 
   '@types/babel__core@7.20.5':
     dependencies:
