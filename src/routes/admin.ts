@@ -154,5 +154,21 @@ export function createAdminRouter(db: HubDB, adminToken: string, updatesDir: str
     }
   });
 
+  // Stardom dev-mode toggle
+  router.get('/stardom-dev-mode', (_req: Request, res: Response) => {
+    const val = db.getSetting('stardom_dev_mode');
+    res.json({ enabled: val === '1' });
+  });
+
+  router.put('/stardom-dev-mode', (req: Request, res: Response) => {
+    const { enabled } = req.body;
+    if (typeof enabled !== 'boolean') {
+      res.status(400).json({ error: 'enabled (boolean) required' });
+      return;
+    }
+    db.setSetting('stardom_dev_mode', enabled ? '1' : '0');
+    res.json({ ok: true, enabled });
+  });
+
   return router;
 }
