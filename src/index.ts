@@ -95,7 +95,6 @@ app.use('/updates', (_req, res) => res.status(404).send('Not found'));
 
 app.use('/api', createReportRouter(db, PSK));
 app.use('/api', createBroadcastRouter(db, PSK));
-app.use('/api/hub', createHubApiRouter(roomDB, taskDB, PSK, taskEngine, db));
 app.get('/health', (_req, res) => res.json({ ok: true }));
 
 app.use('/admin', createAdminRouter(db, ADMIN_TOKEN, updatesDir));
@@ -121,6 +120,9 @@ const server = app.listen(PORT, () => {
 });
 
 const wsHub = new WsHub(server, roomDB, PSK, taskEngine);
+
+// Hub API routes registered after wsHub creation so auto-dispatch can broadcast via WS
+app.use('/api/hub', createHubApiRouter(roomDB, taskDB, PSK, taskEngine, db, wsHub));
 
 process.on('SIGTERM', () => {
   wsHub.close();

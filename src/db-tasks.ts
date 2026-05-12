@@ -153,7 +153,7 @@ export class TaskDB {
     this.db.prepare(`
       INSERT INTO tasks (id, room_id, title, description, priority, created_by, context, acceptance_criteria, subtasks, auto_execute, git_branch)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(id, params.roomId, params.title, params.description ?? null, params.priority ?? 0, params.createdBy, context, params.acceptanceCriteria ?? null, subtasks, params.autoExecute ? 1 : 0, params.gitBranch ?? null);
+    `).run(id, params.roomId, params.title, params.description ?? null, params.priority ?? 0, params.createdBy, context, params.acceptanceCriteria ?? null, subtasks, params.autoExecute !== false ? 1 : 0, params.gitBranch ?? null);
 
     this.insertEvent(id, 'created', params.createdBy, { title: params.title });
 

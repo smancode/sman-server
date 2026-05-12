@@ -33,7 +33,7 @@ export class WsHub {
     this.taskEngine = taskEngine ?? null;
     this.wss = new WebSocketServer({ server, path: '/ws' });
     if (taskEngine) {
-      this.taskHandler = createTaskHandler(taskEngine, this);
+      this.taskHandler = createTaskHandler(taskEngine, this, this.roomDB);
     }
 
     this.wss.on('connection', (ws) => {

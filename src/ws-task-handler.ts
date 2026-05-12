@@ -2,6 +2,9 @@ import type { WebSocket } from 'ws';
 import type { WsHub } from './ws-server.js';
 import type { TaskEngine } from './task-engine.js';
 import type { WsMessage, TaskStatus } from './types.js';
+import type { RoomDB } from './db-rooms.js';
+
+const AUTO_DISPATCH_TIMEOUT_MS = 30_000;
 
 interface AuthedClient {
   ws: WebSocket;
@@ -9,7 +12,45 @@ interface AuthedClient {
   subscribedRooms: Set<string>;
 }
 
-export function createTaskHandler(engine: TaskEngine, wsHub: WsHub) {
+export function createTaskHandler(engine: TaskEngine, wsHub: WsHub, roomDB: RoomDB) {
+  const autoDispatchTimers = new Map<string, ReturnType<typeof setTimeout>>();
+
+  function scheduleAutoDispatchFallback(taskId: string, roomId: string): void {
+    if (autoDispatchTimers.has(taskId)) return;
+    const timer = setTimeout(() => {
+      autoDispatchTimers.delete(taskId);
+      const result = engine.tryAutoConfirmAndDispatch(taskId, roomDB, true);
+      if (result) {
+        wsHub.broadcastToRoom(roomId, { type: 'task.confirmed', task: result.task });
+        wsHub.broadcastToRoom(roomId, { type: 'task.dispatched', task: result.task, assignments: result.assignments });
+        for (const assignment of result.assignments) {
+          wsHub.sendToAgent(assignment.agent_id, { type: 'task.dispatched_to', task: result.task, assignment });
+        }
+      }
+    }, AUTO_DISPATCH_TIMEOUT_MS);
+    autoDispatchTimers.set(taskId, timer);
+  }
+
+  function clearAutoDispatchTimer(taskId: string): void {
+    const timer = autoDispatchTimers.get(taskId);
+    if (timer) {
+      clearTimeout(timer);
+      autoDispatchTimers.delete(taskId);
+    }
+  }
+
+  function broadcastAutoDispatch(taskId: string, roomId: string): void {
+    clearAutoDispatchTimer(taskId);
+    const result = engine.tryAutoConfirmAndDispatch(taskId, roomDB);
+    if (result) {
+      wsHub.broadcastToRoom(roomId, { type: 'task.confirmed', task: result.task });
+      wsHub.broadcastToRoom(roomId, { type: 'task.dispatched', task: result.task, assignments: result.assignments });
+      for (const assignment of result.assignments) {
+        wsHub.sendToAgent(assignment.agent_id, { type: 'task.dispatched_to', task: result.task, assignment });
+      }
+    }
+  }
+
   return {
     handle(client: AuthedClient, msg: WsMessage): boolean {
       // Task messages
@@ -74,6 +115,11 @@ export function createTaskHandler(engine: TaskEngine, wsHub: WsHub) {
 
         send(client.ws, { type: 'task.created', task });
         wsHub.broadcastToRoom(roomId, { type: 'task.created', task });
+
+        // Schedule auto-dispatch fallback for auto_execute tasks
+        if (task.auto_execute === 1) {
+          scheduleAutoDispatchFallback(task.id, roomId);
+        }
       } catch (err) {
         send(client.ws, { type: 'task.error', reason: (err as Error).message });
       }
@@ -315,6 +361,9 @@ export function createTaskHandler(engine: TaskEngine, wsHub: WsHub) {
       const task = engine.getTask(taskId);
       if (task) {
         wsHub.broadcastToRoom(task.room_id, { type: 'evaluation.submitted', taskId, report });
+
+        // Auto-confirm + auto-dispatch if all evaluations received
+        broadcastAutoDispatch(taskId, task.room_id);
       }
     },
 

@@ -4,12 +4,48 @@ import type { RoomDB } from '../db-rooms.js';
 import type { TaskDB } from '../db-tasks.js';
 import type { TaskEngine } from '../task-engine.js';
 import type { HubDB } from '../db.js';
+import type { WsHub } from '../ws-server.js';
 import { decrypt, encrypt } from '../crypto.js';
 
 const REPLAY_WINDOW_MS = 5 * 60 * 1000;
+const AUTO_DISPATCH_TIMEOUT_MS = 30_000;
 
-export function createHubApiRouter(roomDB: RoomDB, taskDB: TaskDB, psk: string, taskEngine: TaskEngine | undefined, hubDB: HubDB): Router {
+export function createHubApiRouter(roomDB: RoomDB, taskDB: TaskDB, psk: string, taskEngine: TaskEngine | undefined, hubDB: HubDB, wsHub?: WsHub): Router {
   const router = Router();
+  const autoDispatchTimers = new Map<string, ReturnType<typeof setTimeout>>();
+
+  function scheduleAutoDispatchFallback(taskId: string, roomId: string): void {
+    if (!taskEngine || autoDispatchTimers.has(taskId)) return;
+    const timer = setTimeout(() => {
+      autoDispatchTimers.delete(taskId);
+      const result = taskEngine.tryAutoConfirmAndDispatch(taskId, roomDB, true);
+      if (result && wsHub) {
+        wsHub.broadcastToRoom(roomId, { type: 'task.confirmed', task: result.task });
+        wsHub.broadcastToRoom(roomId, { type: 'task.dispatched', task: result.task, assignments: result.assignments });
+        for (const assignment of result.assignments) {
+          wsHub.sendToAgent(assignment.agent_id, { type: 'task.dispatched_to', task: result.task, assignment });
+        }
+      }
+    }, AUTO_DISPATCH_TIMEOUT_MS);
+    autoDispatchTimers.set(taskId, timer);
+  }
+
+  function tryAutoDispatch(taskId: string, roomId: string): void {
+    if (!taskEngine) return;
+    const timer = autoDispatchTimers.get(taskId);
+    if (timer) {
+      clearTimeout(timer);
+      autoDispatchTimers.delete(taskId);
+    }
+    const result = taskEngine.tryAutoConfirmAndDispatch(taskId, roomDB);
+    if (result && wsHub) {
+      wsHub.broadcastToRoom(roomId, { type: 'task.confirmed', task: result.task });
+      wsHub.broadcastToRoom(roomId, { type: 'task.dispatched', task: result.task, assignments: result.assignments });
+      for (const assignment of result.assignments) {
+        wsHub.sendToAgent(assignment.agent_id, { type: 'task.dispatched_to', task: result.task, assignment });
+      }
+    }
+  }
 
   // PSK auth middleware — all routes carry encrypted payload in body
   router.use((req: Request, res: Response, next) => {
@@ -193,6 +229,10 @@ export function createHubApiRouter(roomDB: RoomDB, taskDB: TaskDB, psk: string, 
         gitBranch: data.gitBranch,
       });
       res.status(201).json({ payload: encrypt(task, psk) });
+      // Schedule auto-dispatch fallback for auto_execute tasks
+      if (task.auto_execute === 1) {
+        scheduleAutoDispatchFallback(task.id, task.room_id);
+      }
       return;
     }
     const roomId = data?.roomId;
@@ -335,6 +375,12 @@ export function createHubApiRouter(roomDB: RoomDB, taskDB: TaskDB, psk: string, 
       rawResponse: data.rawResponse || '',
     });
     res.status(201).json({ payload: encrypt(report, psk) });
+
+    // Auto-confirm + auto-dispatch if all evaluations received
+    const task = taskDB.getTask(taskId);
+    if (task) {
+      tryAutoDispatch(taskId, task.room_id);
+    }
   });
 
   // Approve evaluation report
