@@ -4,6 +4,11 @@ import { t, useLocale } from '../locales';
 import { useAuthStore } from '../stores/auth';
 import { formatDateTime, useAutoRefresh } from '../lib/utils';
 
+function unescape(str: string | null): string {
+  if (!str) return '';
+  return str.replace(/\\n/g, '\n').replace(/\\t/g, '\t');
+}
+
 interface ErrorReport {
   id: number;
   client_id: string | null;
@@ -82,7 +87,7 @@ export function ErrorsTab() {
                         {r.llm_base_url && <div className="detail-field"><label>{t('errors.detailBaseUrl')}</label><code>{r.llm_base_url}</code></div>}
                         {r.last_user_message && <div className="detail-field"><label>{t('errors.detailUserMsg')}</label><code>{r.last_user_message}</code></div>}
                         {r.session_id && <div className="detail-field"><label>{t('errors.detailSession')}</label><code>{r.session_id}</code></div>}
-                        {r.raw_error && <div className="detail-field detail-field-full"><label>{t('errors.detailRaw')}</label><pre className="error-raw">{r.raw_error}</pre></div>}
+                        {r.raw_error && <div className="detail-field detail-field-full"><label>{t('errors.detailRaw')}</label><pre className="error-raw">{unescape(r.raw_error)}</pre></div>}
                       </div>
                     </td>
                   </tr>
