@@ -53,4 +53,7 @@ export const api = {
   getStardomDevMode: (token: string) => request('/stardom-dev-mode', token),
   setStardomDevMode: (token: string, enabled: boolean) =>
     request('/stardom-dev-mode', token, { method: 'PUT', body: JSON.stringify({ enabled }) }),
+  getErrorReports: (token: string) => request('/error-reports', token),
+  deleteErrorReport: (token: string, id: number) =>
+    request(`/error-reports/${id}`, token, { method: 'DELETE' }),
 };

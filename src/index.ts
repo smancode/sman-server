@@ -101,7 +101,21 @@ app.use('/admin', createAdminRouter(db, ADMIN_TOKEN, updatesDir));
 app.use('/admin', createRoomsRouter(roomDB, ADMIN_TOKEN));
 app.use('/admin', createTasksRouter(taskDB, ADMIN_TOKEN));
 
-// SPA static files (localhost only, production mode)
+// Hub API needs wsHub for auto-dispatch broadcast, but wsHub requires a running server.
+// Solution: register hub API route after listen(), but BEFORE the SPA fallback.
+// The SPA fallback is stored and registered after wsHub is created.
+
+const server = app.listen(PORT, () => {
+  console.log(`sman-server listening on port ${PORT}`);
+  console.log(`Updates served at /updates/sman`);
+});
+
+const wsHub = new WsHub(server, roomDB, PSK, taskEngine);
+
+// Hub API routes — registered after wsHub creation, before SPA fallback
+app.use('/api/hub', createHubApiRouter(roomDB, taskDB, PSK, taskEngine, db, wsHub));
+
+// SPA static files (localhost only) — MUST be last to avoid intercepting API routes
 const publicDir = path.join(__dirname, 'public');
 if (fs.existsSync(path.join(publicDir, 'index.html'))) {
   app.use(localhostOnly, express.static(publicDir));
@@ -113,16 +127,6 @@ if (fs.existsSync(path.join(publicDir, 'index.html'))) {
     res.status(404).json({ error: 'Not found' });
   });
 }
-
-const server = app.listen(PORT, () => {
-  console.log(`sman-server listening on port ${PORT}`);
-  console.log(`Updates served at /updates/sman`);
-});
-
-const wsHub = new WsHub(server, roomDB, PSK, taskEngine);
-
-// Hub API routes registered after wsHub creation so auto-dispatch can broadcast via WS
-app.use('/api/hub', createHubApiRouter(roomDB, taskDB, PSK, taskEngine, db, wsHub));
 
 process.on('SIGTERM', () => {
   wsHub.close();

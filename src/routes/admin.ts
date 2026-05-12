@@ -170,5 +170,15 @@ export function createAdminRouter(db: HubDB, adminToken: string, updatesDir: str
     res.json({ ok: true, enabled });
   });
 
+  router.get('/error-reports', (req: Request, res: Response) => {
+    const limit = Math.min(Math.max(parseInt(String(req.query.limit)) || 100, 1), 500);
+    res.json(db.getErrorReports(limit));
+  });
+
+  router.delete('/error-reports/:id', (req: Request, res: Response) => {
+    db.deleteErrorReport(Number(req.params.id));
+    res.json({ ok: true });
+  });
+
   return router;
 }

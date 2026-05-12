@@ -12,6 +12,7 @@
   "tab.rooms": { "text": "Project Groups" },
   "tab.agents": { "text": "Agents" },
   "tab.tasks": { "text": "Tasks" },
+  "tab.errors": { "text": "Error Reports" },
 
   "token.placeholder": { "text": "Admin Token" },
   "token.connect": { "text": "Connect" },
@@ -128,5 +129,21 @@
 
   "common.languageSwitch": { "text": "Language" },
   "dashboard.stardomDevMode": { "text": "Stardom Dev Mode" },
-  "dashboard.stardomDevModeHint": { "text": "When enabled, clients can access the Stardom page" }
+  "dashboard.stardomDevModeHint": { "text": "When enabled, clients can access the Stardom page" },
+
+  "errors.noData": { "text": "No error reports yet" },
+  "errors.loadFailed": { "text": "Failed to load error reports" },
+  "errors.colTime": { "text": "Time" },
+  "errors.colClient": { "text": "Client" },
+  "errors.colCode": { "text": "Error Code" },
+  "errors.colMessage": { "text": "Message" },
+  "errors.colModel": { "text": "Model" },
+  "errors.colOs": { "text": "OS" },
+  "errors.colActions": { "text": "Actions" },
+  "errors.delete": { "text": "Delete" },
+  "errors.detailWorkspace": { "text": "Workspace" },
+  "errors.detailBaseUrl": { "text": "API URL" },
+  "errors.detailUserMsg": { "text": "User Message" },
+  "errors.detailSession": { "text": "Session ID" },
+  "errors.detailRaw": { "text": "Raw Error" }
 }

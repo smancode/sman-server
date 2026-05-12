@@ -39,6 +39,21 @@ interface ReportRow {
   active_sessions: number;
 }
 
+interface ErrorReportRow {
+  id: number;
+  client_id: string | null;
+  session_id: string | null;
+  error_code: string | null;
+  error_message: string | null;
+  raw_error: string | null;
+  workspace: string | null;
+  last_user_message: string | null;
+  llm_model: string | null;
+  llm_base_url: string | null;
+  os_info: string | null;
+  created_at: string;
+}
+
 export class HubDB {
   private db: Database.Database;
 
@@ -94,6 +109,24 @@ export class HubDB {
         updated_at TEXT DEFAULT (datetime('now', 'localtime'))
       );
       INSERT OR IGNORE INTO hub_settings (key, value) VALUES ('stardom_dev_mode', '0');
+
+      CREATE TABLE IF NOT EXISTS error_reports (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        client_id TEXT,
+        session_id TEXT,
+        error_code TEXT,
+        error_message TEXT,
+        raw_error TEXT,
+        workspace TEXT,
+        last_user_message TEXT,
+        llm_model TEXT,
+        llm_base_url TEXT,
+        os_info TEXT,
+        created_at TEXT NOT NULL DEFAULT (datetime('now'))
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_error_reports_time ON error_reports(created_at);
+      CREATE INDEX IF NOT EXISTS idx_error_reports_code ON error_reports(error_code);
     `);
   }
 
@@ -196,6 +229,45 @@ export class HubDB {
       INSERT INTO hub_settings (key, value, updated_at) VALUES (?, ?, datetime('now', 'localtime'))
       ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at
     `).run(key, value);
+  }
+
+  insertErrorReport(params: {
+    clientId?: string;
+    sessionId?: string;
+    errorCode?: string;
+    errorMessage?: string;
+    rawError?: string;
+    workspace?: string;
+    lastUserMessage?: string;
+    llmModel?: string;
+    llmBaseUrl?: string;
+    osInfo?: string;
+  }): void {
+    this.db.prepare(`
+      INSERT INTO error_reports (client_id, session_id, error_code, error_message, raw_error, workspace, last_user_message, llm_model, llm_base_url, os_info)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      params.clientId ?? null,
+      params.sessionId ?? null,
+      params.errorCode ?? null,
+      params.errorMessage ?? null,
+      params.rawError ?? null,
+      params.workspace ?? null,
+      params.lastUserMessage ?? null,
+      params.llmModel ?? null,
+      params.llmBaseUrl ?? null,
+      params.osInfo ?? null,
+    );
+  }
+
+  getErrorReports(limit = 100): ErrorReportRow[] {
+    return this.db.prepare(
+      'SELECT * FROM error_reports ORDER BY created_at DESC LIMIT ?'
+    ).all(limit) as ErrorReportRow[];
+  }
+
+  deleteErrorReport(id: number): void {
+    this.db.prepare('DELETE FROM error_reports WHERE id = ?').run(id);
   }
 
   close(): void {

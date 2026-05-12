@@ -12,6 +12,7 @@
   "tab.rooms": { "text": "项目组" },
   "tab.agents": { "text": "代理" },
   "tab.tasks": { "text": "任务" },
+  "tab.errors": { "text": "错误上报" },
 
   "token.placeholder": { "text": "输入管理令牌" },
   "token.connect": { "text": "连接" },
@@ -128,5 +129,21 @@
 
   "common.languageSwitch": { "text": "语言" },
   "dashboard.stardomDevMode": { "text": "协作星图开发模式" },
-  "dashboard.stardomDevModeHint": { "text": "开启后客户端可进入协作星图页面" }
+  "dashboard.stardomDevModeHint": { "text": "开启后客户端可进入协作星图页面" },
+
+  "errors.noData": { "text": "暂无错误上报" },
+  "errors.loadFailed": { "text": "加载错误上报失败" },
+  "errors.colTime": { "text": "时间" },
+  "errors.colClient": { "text": "客户端" },
+  "errors.colCode": { "text": "错误码" },
+  "errors.colMessage": { "text": "错误信息" },
+  "errors.colModel": { "text": "模型" },
+  "errors.colOs": { "text": "系统" },
+  "errors.colActions": { "text": "操作" },
+  "errors.delete": { "text": "删除" },
+  "errors.detailWorkspace": { "text": "工作区" },
+  "errors.detailBaseUrl": { "text": "API 地址" },
+  "errors.detailUserMsg": { "text": "用户消息" },
+  "errors.detailSession": { "text": "会话 ID" },
+  "errors.detailRaw": { "text": "原始错误" }
 }
