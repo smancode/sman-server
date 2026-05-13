@@ -127,6 +127,14 @@ export class HubDB {
 
       CREATE INDEX IF NOT EXISTS idx_error_reports_time ON error_reports(created_at);
       CREATE INDEX IF NOT EXISTS idx_error_reports_code ON error_reports(error_code);
+
+      CREATE TABLE IF NOT EXISTS page_views (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        date TEXT NOT NULL,
+        views INTEGER NOT NULL DEFAULT 0,
+        UNIQUE(date)
+      );
+      CREATE INDEX IF NOT EXISTS idx_page_views_date ON page_views(date);
     `);
   }
 
@@ -229,6 +237,23 @@ export class HubDB {
       INSERT INTO hub_settings (key, value, updated_at) VALUES (?, ?, datetime('now', 'localtime'))
       ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at
     `).run(key, value);
+  }
+
+  recordPageView(): void {
+    const date = new Date().toISOString().slice(0, 10);
+    this.db.prepare(`
+      INSERT INTO page_views (date, views) VALUES (?, 1)
+      ON CONFLICT(date) DO UPDATE SET views = views + 1
+    `).run(date);
+  }
+
+  getPageViews(days: number): { date: string; views: number }[] {
+    const rows = this.db.prepare(`
+      SELECT date, views FROM page_views
+      WHERE date >= date('now', '-' || ? || ' days')
+      ORDER BY date ASC
+    `).all(days) as { date: string; views: number }[];
+    return rows;
   }
 
   insertErrorReport(params: {

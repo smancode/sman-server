@@ -145,5 +145,13 @@
   "errors.detailBaseUrl": { "text": "API 地址" },
   "errors.detailUserMsg": { "text": "用户消息" },
   "errors.detailSession": { "text": "会话 ID" },
-  "errors.detailRaw": { "text": "原始错误" }
+  "errors.detailRaw": { "text": "原始错误" },
+
+  "tab.analytics": { "text": "访问分析" },
+  "analytics.today": { "text": "今日访问" },
+  "analytics.total30d": { "text": "30天总访问" },
+  "analytics.dailyAvg": { "text": "日均访问" },
+  "analytics.noData": { "text": "暂无访问数据" },
+  "analytics.loadFailed": { "text": "加载访问数据失败" },
+  "analytics.views": { "text": "访问量" }
 }

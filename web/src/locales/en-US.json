@@ -145,5 +145,13 @@
   "errors.detailBaseUrl": { "text": "API URL" },
   "errors.detailUserMsg": { "text": "User Message" },
   "errors.detailSession": { "text": "Session ID" },
-  "errors.detailRaw": { "text": "Raw Error" }
+  "errors.detailRaw": { "text": "Raw Error" },
+
+  "tab.analytics": { "text": "Analytics" },
+  "analytics.today": { "text": "Today" },
+  "analytics.total30d": { "text": "30-day Total" },
+  "analytics.dailyAvg": { "text": "Daily Average" },
+  "analytics.noData": { "text": "No data yet" },
+  "analytics.loadFailed": { "text": "Failed to load analytics" },
+  "analytics.views": { "text": "Views" }
 }

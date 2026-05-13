@@ -10,16 +10,18 @@ import { RoomsTab } from './components/RoomsTab';
 import { AgentsTab } from './components/AgentsTab';
 import { TasksTab } from './components/TasksTab';
 import { ErrorsTab } from './components/ErrorsTab';
+import { AnalyticsTab } from './components/AnalyticsTab';
 import { useAuthStore } from './stores/auth';
 import { useThemeStore } from './stores/theme';
 
-type Tab = 'dashboard' | 'clients' | 'broadcasts' | 'upload' | 'errors' | 'rooms' | 'agents' | 'tasks';
+type Tab = 'dashboard' | 'clients' | 'broadcasts' | 'upload' | 'analytics' | 'errors' | 'rooms' | 'agents' | 'tasks';
 
 const NAV_ITEMS: { key: Tab; labelKey: string; group: string }[] = [
   { key: 'dashboard', labelKey: 'tab.dashboard', group: 'overview' },
   { key: 'clients', labelKey: 'tab.clients', group: 'overview' },
   { key: 'broadcasts', labelKey: 'tab.broadcasts', group: 'overview' },
   { key: 'upload', labelKey: 'tab.upload', group: 'overview' },
+  { key: 'analytics', labelKey: 'tab.analytics', group: 'overview' },
   { key: 'errors', labelKey: 'tab.errors', group: 'overview' },
   { key: 'rooms', labelKey: 'tab.rooms', group: 'hub' },
   { key: 'agents', labelKey: 'tab.agents', group: 'hub' },
@@ -106,6 +108,7 @@ export function App() {
           {tab === 'clients' && <ClientsTab />}
           {tab === 'broadcasts' && <BroadcastsTab />}
           {tab === 'upload' && <UploadTab />}
+          {tab === 'analytics' && <AnalyticsTab />}
           {tab === 'rooms' && <RoomsTab />}
           {tab === 'agents' && <AgentsTab />}
           {tab === 'tasks' && <TasksTab />}

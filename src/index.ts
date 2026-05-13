@@ -51,7 +51,9 @@ if (!ADMIN_TOKEN) {
 }
 
 const updatesDir = path.join(DATA_DIR, 'updates', 'sman');
+const pagesDir = path.join(DATA_DIR, 'pages');
 fs.mkdirSync(updatesDir, { recursive: true });
+fs.mkdirSync(pagesDir, { recursive: true });
 
 const db = new HubDB(path.join(DATA_DIR, 'hub.db'));
 const roomDB = new RoomDB(path.join(DATA_DIR, 'rooms.db'));
@@ -97,6 +99,12 @@ app.use('/api', createReportRouter(db, PSK));
 app.use('/api', createBroadcastRouter(db, PSK));
 app.get('/health', (_req, res) => res.json({ ok: true }));
 
+// Public page view tracking (no auth)
+app.post('/api/pageview', (_req, res) => {
+  try { db.recordPageView(); } catch { /* ignore */ }
+  res.json({ ok: true });
+});
+
 app.use('/admin', createAdminRouter(db, ADMIN_TOKEN, updatesDir));
 app.use('/admin', createRoomsRouter(roomDB, ADMIN_TOKEN));
 app.use('/admin', createTasksRouter(taskDB, ADMIN_TOKEN));
@@ -114,6 +122,9 @@ const wsHub = new WsHub(server, roomDB, PSK, taskEngine);
 
 // Hub API routes — registered after wsHub creation, before SPA fallback
 app.use('/api/hub', createHubApiRouter(roomDB, taskDB, PSK, taskEngine, db, wsHub));
+
+// Public static pages (no auth, accessible from LAN)
+app.use('/pages', express.static(pagesDir));
 
 // SPA static files (localhost only) — MUST be last to avoid intercepting API routes
 const publicDir = path.join(__dirname, 'public');

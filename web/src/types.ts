@@ -22,3 +22,8 @@ export interface Broadcast {
   created_at: string;
   active: number;
 }
+
+export interface PageViewDay {
+  date: string;
+  views: number;
+}

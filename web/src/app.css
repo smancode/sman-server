@@ -681,3 +681,65 @@ html.dark .status-warning { color: var(--warning); }
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+
+/* ── Chart ── */
+.chart-container {
+  margin-top: 24px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 20px;
+}
+.chart-bars {
+  display: flex;
+  align-items: flex-end;
+  gap: 3px;
+  height: 200px;
+}
+.chart-bar-wrapper {
+  flex: 1;
+  height: 100%;
+  display: flex;
+  align-items: flex-end;
+  position: relative;
+}
+.chart-bar {
+  width: 100%;
+  background: var(--primary);
+  border-radius: 2px 2px 0 0;
+  min-height: 2px;
+  transition: opacity 0.15s;
+  cursor: pointer;
+}
+.chart-bar-wrapper:hover .chart-bar {
+  opacity: 0.8;
+}
+.chart-tooltip {
+  position: absolute;
+  bottom: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--text);
+  color: var(--surface);
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-size: 11px;
+  white-space: nowrap;
+  pointer-events: none;
+  margin-bottom: 6px;
+}
+.chart-tooltip-date {
+  opacity: 0.7;
+}
+.chart-tooltip-value {
+  font-weight: 600;
+}
+.chart-x-labels {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 6px;
+}
+.chart-x-label {
+  font-size: 10px;
+  color: var(--text3);
+}
