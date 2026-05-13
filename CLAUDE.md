@@ -75,7 +75,17 @@ Clients send encrypted reports → server decrypts with PSK → upserts client r
 
 目标机器: Windows x64，无需预装 Node.js。打包产物为自包含 zip，内含 `node.exe` + 应用代码 + 依赖。
 
-### 打包步骤
+### 一键打包
+
+```bash
+git pull && bash pack.sh
+```
+
+`pack.sh` 自动完成：x64 Node 切换 → 安装依赖 → 构建 → 准备 staging → 验证（架构/符号链接/模块加载）→ 打 zip。
+
+版本号格式：`26.MMDD.HH`（年.月日.小时），自动取当前时间。产物如 `sman-server-26.0513.10.zip`。
+
+### 手动打包步骤（备用）
 
 开发机是 ARM64 Windows，需要切换到 x64 Node 来获取正确的原生模块（better-sqlite3）。
 
