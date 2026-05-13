@@ -4,3 +4,4 @@ data/
 .env
 hub.key
 web/node_modules/
+deploy-private/

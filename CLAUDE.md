@@ -83,7 +83,19 @@ git pull && bash pack.sh
 
 `pack.sh` 自动完成：x64 Node 切换 → 安装依赖 → 构建 → 准备 staging → 验证（架构/符号链接/模块加载）→ 打 zip。
 
-版本号格式：`26.MMDD.HH`（年.月日.小时），自动取当前时间，月份去掉前导0。产物如 `sman-server-26.513.10.zip`。
+版本号格式：`26.MDD.HH`（年.月日.小时），自动取当前时间，月份去掉前导0。产物如 `sman-server-26.513.10.zip`。
+
+### 一键部署到 smancode.com
+
+```bash
+bash deploy-smancode.sh
+```
+
+`deploy-smancode.sh` 自动完成：构建 → SCP 上传 dist/ 和 package.json → 服务器 npm install --prod → systemctl restart sman-server → health check。
+
+SSH 密钥在 `SSH_KEY_PATH`（已 gitignore）。服务器 `SERVER_IP`，app 用户运行 sman-server，root 用户重启 systemd。
+
+线上地址：`https://www.smancode.com/server/`
 
 ### 手动打包步骤（备用）
 
