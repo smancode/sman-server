@@ -95,12 +95,12 @@ export function createAdminRouter(db: HubDB, adminToken: string, updatesDir: str
 
           // Auto-update nginx download link and landing page version
           const scriptPath = path.resolve(process.cwd(), 'update-download-links.sh');
-          try {
+          if (fs.existsSync(scriptPath)) {
             execFile('bash', [scriptPath], { timeout: 5000 }, (err, stdout) => {
               if (err) console.error('[upload] update-download-links.sh failed:', err.message);
               else console.log('[upload] download links updated:', stdout.trim());
             });
-          } catch {}
+          }
         }
       }
 
