@@ -4,6 +4,7 @@ import type { HubDB } from '../db.js';
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
+import { execFile } from 'node:child_process';
 
 export function createAdminRouter(db: HubDB, adminToken: string, updatesDir: string): Router {
   const router = Router();
@@ -91,6 +92,15 @@ export function createAdminRouter(db: HubDB, adminToken: string, updatesDir: str
           result.yml = yml;
           result.sha512 = sha512;
           result.version = version;
+
+          // Auto-update nginx download link and landing page version
+          const scriptPath = path.join(updatesDir, '..', '..', 'update-download-links.sh');
+          try {
+            execFile('bash', [scriptPath], { timeout: 5000 }, (err, stdout) => {
+              if (err) console.error('[upload] update-download-links.sh failed:', err.message);
+              else console.log('[upload] download links updated:', stdout.trim());
+            });
+          } catch {}
         }
       }
 
