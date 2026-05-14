@@ -61,6 +61,7 @@ const roomDB = new RoomDB(path.join(DATA_DIR, 'rooms.db'));
 const taskDB = new TaskDB(path.join(DATA_DIR, 'tasks.db'));
 const taskEngine = new TaskEngine(taskDB);
 const app = express();
+app.set('trust proxy', 1);
 
 app.use(express.json({ limit: '1mb' }));
 
@@ -83,11 +84,19 @@ app.get('/updates/sman/:filename', (req: Request<{ filename: string }>, res: Res
   const redirectFile = path.join(updatesDir, '_redirects', fname);
   try {
     const targetUrl = fs.readFileSync(redirectFile, 'utf-8').trim();
+    try {
+      const ip = req.ip || req.headers['x-forwarded-for']?.toString().split(',')[0]?.trim() || 'unknown';
+      db.recordDownload(ip, fname);
+    } catch { /* ignore */ }
     res.redirect(302, targetUrl);
   } catch {
     // No redirect mapping — check if actual file exists
     const filePath = path.join(updatesDir, fname);
     if (fs.existsSync(filePath)) {
+      try {
+        const ip = req.ip || req.headers['x-forwarded-for']?.toString().split(',')[0]?.trim() || 'unknown';
+        db.recordDownload(ip, fname);
+      } catch { /* ignore */ }
       res.sendFile(filePath);
       return;
     }
@@ -101,8 +110,11 @@ app.use('/api', createBroadcastRouter(db, PSK));
 app.get('/health', (_req, res) => res.json({ ok: true }));
 
 // Public page view tracking (no auth)
-app.post('/api/pageview', (_req, res) => {
-  try { db.recordPageView(); } catch { /* ignore */ }
+app.post('/api/pageview', (req, res) => {
+  try {
+    const ip = req.ip || req.headers['x-forwarded-for']?.toString().split(',')[0]?.trim() || 'unknown';
+    db.recordPageView(ip);
+  } catch { /* ignore */ }
   res.json({ ok: true });
 });
 
@@ -137,6 +149,37 @@ app.post('/admin/skill-scheduler/trigger', (req: Request, res: Response) => {
   }
   const result = skillScheduler.triggerNow();
   res.json({ ok: true, ...result });
+});
+
+// Admin: skill scheduler status + toggle + logs
+app.get('/admin/skill-scheduler/status', (req: Request, res: Response) => {
+  const auth = req.headers.authorization;
+  if (auth !== `Bearer ${ADMIN_TOKEN}`) {
+    res.status(401).json({ error: 'Unauthorized' });
+    return;
+  }
+  res.json(skillScheduler.getStatus());
+});
+
+app.put('/admin/skill-scheduler/enabled', (req: Request, res: Response) => {
+  const auth = req.headers.authorization;
+  if (auth !== `Bearer ${ADMIN_TOKEN}`) {
+    res.status(401).json({ error: 'Unauthorized' });
+    return;
+  }
+  const { enabled } = req.body as { enabled: boolean };
+  skillScheduler.setEnabled(Boolean(enabled));
+  res.json({ ok: true, enabled: skillScheduler.isEnabled() });
+});
+
+app.get('/admin/skill-scheduler/logs', (req: Request, res: Response) => {
+  const auth = req.headers.authorization;
+  if (auth !== `Bearer ${ADMIN_TOKEN}`) {
+    res.status(401).json({ error: 'Unauthorized' });
+    return;
+  }
+  const limit = parseInt(req.query.limit as string) || 100;
+  res.json(skillScheduler.getLogs(limit));
 });
 
 // Public static pages (no auth, accessible from LAN)

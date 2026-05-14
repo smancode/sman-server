@@ -195,5 +195,15 @@ export function createAdminRouter(db: HubDB, adminToken: string, updatesDir: str
     res.json({ days: db.getPageViews(days) });
   });
 
+  router.get('/pageviews/ips', (_req: Request, res: Response) => {
+    const days = Math.min(Math.max(parseInt(String(_req.query.days)) || 30, 1), 365);
+    res.json({ ips: db.getPageViewIps(days) });
+  });
+
+  router.get('/downloads', (_req: Request, res: Response) => {
+    const days = Math.min(Math.max(parseInt(String(_req.query.days)) || 30, 1), 365);
+    res.json({ stats: db.getDownloadStats(days), logs: db.getDownloadLogs(days) });
+  });
+
   return router;
 }

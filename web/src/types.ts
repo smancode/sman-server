@@ -27,3 +27,22 @@ export interface PageViewDay {
   date: string;
   views: number;
 }
+
+export interface PageViewIp {
+  ip: string;
+  count: number;
+  last_seen: string;
+}
+
+export interface DownloadLog {
+  ip: string;
+  filename: string;
+  version: string | null;
+  created_at: string;
+}
+
+export interface DownloadStats {
+  total: number;
+  uniqueIps: number;
+  byVersion: { version: string; count: number }[];
+}

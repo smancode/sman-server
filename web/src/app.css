@@ -743,3 +743,28 @@ html.dark .status-warning { color: var(--warning); }
   font-size: 10px;
   color: var(--text3);
 }
+
+.analytics-ip-section {
+  margin-top: 24px;
+}
+.analytics-ip-section .data-table {
+  margin-top: 12px;
+}
+
+.skill-scheduler-status {
+  display: flex;
+  gap: 16px;
+  margin-bottom: 24px;
+  flex-wrap: wrap;
+}
+
+.skill-scheduler-status .stat-card {
+  align-items: flex-start;
+}
+
+.section-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text1);
+  margin: 24px 0 12px;
+}

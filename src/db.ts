@@ -135,6 +135,22 @@ export class HubDB {
         UNIQUE(date)
       );
       CREATE INDEX IF NOT EXISTS idx_page_views_date ON page_views(date);
+
+      CREATE TABLE IF NOT EXISTS page_view_logs (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        ip TEXT NOT NULL,
+        created_at TEXT NOT NULL DEFAULT (datetime('now'))
+      );
+      CREATE INDEX IF NOT EXISTS idx_page_view_logs_created ON page_view_logs(created_at);
+
+      CREATE TABLE IF NOT EXISTS download_logs (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        ip TEXT NOT NULL,
+        filename TEXT NOT NULL,
+        version TEXT,
+        created_at TEXT NOT NULL DEFAULT (datetime('now'))
+      );
+      CREATE INDEX IF NOT EXISTS idx_download_logs_created ON download_logs(created_at);
     `);
   }
 
@@ -239,21 +255,70 @@ export class HubDB {
     `).run(key, value);
   }
 
-  recordPageView(): void {
-    const date = new Date().toISOString().slice(0, 10);
-    this.db.prepare(`
-      INSERT INTO page_views (date, views) VALUES (?, 1)
-      ON CONFLICT(date) DO UPDATE SET views = views + 1
-    `).run(date);
+  recordPageView(ip: string): void {
+    this.db.transaction(() => {
+      this.db.prepare(`
+        INSERT INTO page_views (date, views) VALUES (date('now', 'localtime'), 1)
+        ON CONFLICT(date) DO UPDATE SET views = views + 1
+      `).run();
+      this.db.prepare(
+        'INSERT INTO page_view_logs (ip, created_at) VALUES (?, datetime(\'now\', \'localtime\'))'
+      ).run(ip);
+    })();
   }
 
   getPageViews(days: number): { date: string; views: number }[] {
     const rows = this.db.prepare(`
       SELECT date, views FROM page_views
-      WHERE date >= date('now', '-' || ? || ' days')
+      WHERE date >= date('now', 'localtime', '-' || ? || ' days')
       ORDER BY date ASC
     `).all(days) as { date: string; views: number }[];
     return rows;
+  }
+
+  getPageViewIps(days: number): { ip: string; count: number; last_seen: string }[] {
+    const rows = this.db.prepare(`
+      SELECT ip, COUNT(*) as count, MAX(created_at) as last_seen
+      FROM page_view_logs
+      WHERE created_at >= datetime('now', 'localtime', '-' || ? || ' days')
+      GROUP BY ip
+      ORDER BY count DESC
+    `).all(days) as { ip: string; count: number; last_seen: string }[];
+    return rows;
+  }
+
+  recordDownload(ip: string, filename: string): void {
+    const version = filename.match(/\d+\.\d+\.\d+/)?.[0] ?? null;
+    this.db.prepare(
+      'INSERT INTO download_logs (ip, filename, version, created_at) VALUES (?, ?, ?, datetime(\'now\', \'localtime\'))'
+    ).run(ip, filename, version);
+  }
+
+  getDownloadLogs(days: number): { ip: string; filename: string; version: string | null; created_at: string }[] {
+    const rows = this.db.prepare(`
+      SELECT ip, filename, version, created_at FROM download_logs
+      WHERE created_at >= datetime('now', 'localtime', '-' || ? || ' days')
+      ORDER BY created_at DESC
+    `).all(days) as { ip: string; filename: string; version: string | null; created_at: string }[];
+    return rows;
+  }
+
+  getDownloadStats(days: number): { total: number; uniqueIps: number; byVersion: { version: string; count: number }[] } {
+    const total = (this.db.prepare(`
+      SELECT COUNT(*) as c FROM download_logs
+      WHERE created_at >= datetime('now', 'localtime', '-' || ? || ' days')
+    `).get(days) as { c: number }).c;
+    const uniqueIps = (this.db.prepare(`
+      SELECT COUNT(DISTINCT ip) as c FROM download_logs
+      WHERE created_at >= datetime('now', 'localtime', '-' || ? || ' days')
+    `).get(days) as { c: number }).c;
+    const byVersion = this.db.prepare(`
+      SELECT COALESCE(version, 'unknown') as version, COUNT(*) as count
+      FROM download_logs
+      WHERE created_at >= datetime('now', 'localtime', '-' || ? || ' days')
+      GROUP BY version ORDER BY count DESC
+    `).all(days) as { version: string; count: number }[];
+    return { total, uniqueIps, byVersion };
   }
 
   insertErrorReport(params: {

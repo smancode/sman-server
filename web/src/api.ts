@@ -58,4 +58,17 @@ export const api = {
     request(`/error-reports/${id}`, token, { method: 'DELETE' }),
   getPageViews: (token: string, days = 30) =>
     request(`/pageviews?days=${days}`, token),
+  getPageViewIps: (token: string, days = 30) =>
+    request(`/pageviews/ips?days=${days}`, token),
+  getDownloads: (token: string, days = 30) =>
+    request(`/downloads?days=${days}`, token),
+
+  getSkillSchedulerStatus: (token: string) =>
+    request('/skill-scheduler/status', token),
+  setSkillSchedulerEnabled: (token: string, enabled: boolean) =>
+    request('/skill-scheduler/enabled', token, { method: 'PUT', body: JSON.stringify({ enabled }) }),
+  triggerSkillScheduler: (token: string) =>
+    request('/skill-scheduler/trigger', token, { method: 'POST' }),
+  getSkillSchedulerLogs: (token: string, limit = 100) =>
+    request(`/skill-scheduler/logs?limit=${limit}`, token),
 };

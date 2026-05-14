@@ -261,6 +261,12 @@ export class RoomDB {
     ).all() as AgentRecord[];
   }
 
+  getRecentAgents(cutoffIso: string): AgentRecord[] {
+    return this.db.prepare(
+      "SELECT * FROM agents WHERE last_heartbeat >= ? ORDER BY last_heartbeat DESC"
+    ).all(cutoffIso) as AgentRecord[];
+  }
+
   markAgentsOffline(agentIds: string[]): void {
     if (agentIds.length === 0) return;
     const placeholders = agentIds.map(() => '?').join(',');
