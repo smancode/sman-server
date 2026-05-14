@@ -197,7 +197,7 @@
         <svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
         <span class="btn-text" data-i18n="dlBtn">Download Windows</span>
       </a>
-      <p class="card-label" data-i18n="dlDesc">Windows x64 安装包<br/>v26.514.23</p>
+      <p class="card-label" data-i18n="dlDesc">Windows x64 安装包</p>
     </div>
 
     <div class="card-item">
@@ -216,7 +216,7 @@
       starBtn: 'Star on GitHub',
       starDesc: 'Give us a star!<br/>开源免费，持续更新',
       dlBtn: 'Download Windows',
-      dlDesc: 'Windows x64 安装包<br/>v26.514.23',
+      dlDesc: 'Windows x64 安装包',
       qrDesc: '扫码加入微信群<br/>交流反馈、获取帮助'
     },
     en: {
@@ -225,7 +225,7 @@
       starBtn: 'Star on GitHub',
       starDesc: 'Give us a star!<br/>Open source, free, always improving',
       dlBtn: 'Download Windows',
-      dlDesc: 'Windows x64 Installer<br/>v26.514.23',
+      dlDesc: 'Windows x64 Installer',
       qrDesc: 'Scan to join WeChat Group<br/>Feedback & Support'
     }
   };
@@ -348,6 +348,18 @@
   ctx.fillRect(0, 0, W, H);
   requestAnimationFrame(draw);
 })();
+
+// Fetch version from latest.yml and append to download description
+fetch('/updates/sman/latest.yml').then(function(r){return r.text()}).then(function(yml){
+  var m=yml.match(/^version:\s*(\S+)/m);
+  if(!m)return;
+  var v=m[1];
+  var el=document.querySelector('[data-i18n="dlDesc"]');
+  if(el){
+    var isZh=document.documentElement.lang==='zh-CN';
+    el.innerHTML=(isZh?'Windows x64 安装包':'Windows x64 Installer')+'<br/>v'+v;
+  }
+}).catch(function(){});
 
 fetch('/api/pageview', { method: 'POST' }).catch(function(){});
 </script>
