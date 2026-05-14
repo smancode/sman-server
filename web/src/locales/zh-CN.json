@@ -188,5 +188,10 @@
   "skillScheduler.colWorkspace": { "text": "路径" },
   "skillScheduler.colClient": { "text": "客户端" },
   "skillScheduler.colStatus": { "text": "状态" },
-  "skillScheduler.colReason": { "text": "原因" }
+  "skillScheduler.colReason": { "text": "原因" },
+  "skillScheduler.scheduleTime": { "text": "触发时间" },
+  "skillScheduler.scheduleSave": { "text": "保存" },
+  "skillScheduler.scheduleSaved": { "text": "触发时间已更新" },
+  "skillScheduler.scheduleFailed": { "text": "更新触发时间失败" },
+  "skillScheduler.scheduleInvalid": { "text": "时间格式无效（时 0-23，分 0-59）" }
 }

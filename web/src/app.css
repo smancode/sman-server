@@ -623,6 +623,17 @@ html.dark .status-warning { color: var(--warning); }
 .btn-sm.btn-danger { color: var(--danger); border-color: var(--danger); background: none; }
 .btn-sm.btn-danger:hover { background: var(--danger); color: #fff; }
 
+.input-sm {
+  padding: 3px 6px;
+  font-size: 12px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--surface);
+  color: var(--text);
+  outline: none;
+}
+.input-sm:focus { border-color: var(--primary); }
+
 /* ── Error Detail Row ── */
 .expanded-row { background: var(--primary-bg) !important; }
 

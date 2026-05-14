@@ -8,6 +8,8 @@ interface SchedulerStatus {
   enabled: boolean;
   lastRunDate: string | null;
   nextRun: string;
+  scheduleHour: number;
+  scheduleMinute: number;
 }
 
 interface DispatchLog {
@@ -28,6 +30,9 @@ export function SkillSchedulerTab() {
   const [error, setError] = useState('');
   const [triggering, setTriggering] = useState(false);
   const [toggling, setToggling] = useState(false);
+  const [schedHour, setSchedHour] = useState(3);
+  const [schedMinute, setSchedMinute] = useState(3);
+  const [savingSchedule, setSavingSchedule] = useState(false);
   useLocale();
 
   const load = () => {
@@ -36,7 +41,10 @@ export function SkillSchedulerTab() {
       api.getSkillSchedulerLogs(token, 200),
     ])
       .then(([s, l]) => {
-        setStatus(s as SchedulerStatus);
+        const st = s as SchedulerStatus;
+        setStatus(st);
+        setSchedHour(st.scheduleHour);
+        setSchedMinute(st.scheduleMinute);
         setLogs((l as DispatchLog[]).reverse());
         setError('');
       })
@@ -61,13 +69,33 @@ export function SkillSchedulerTab() {
     setTriggering(true);
     api.triggerSkillScheduler(token)
       .then((res) => {
-        const r = res as { dispatched?: number; skipped?: number; total?: number };
-        const msg = `Dispatched: ${r.dispatched ?? 0}, Skipped: ${r.skipped ?? 0}, Total: ${r.total ?? 0}`;
+        const r = res as { dispatched?: number; skipped?: number; total?: number; totalAgents?: number; recentAgents?: number };
+        const dispatched = r.dispatched ?? 0;
+        const skipped = r.skipped ?? 0;
+        const total = r.total ?? 0;
+        const msg = total === 0 && (r.recentAgents ?? 0) === 0
+          ? `No recent agents (online: ${r.totalAgents ?? 0}, recent 1h: ${r.recentAgents ?? 0})`
+          : `Dispatched: ${dispatched}, Skipped: ${skipped}, Total: ${total}`;
         alert(msg);
         load();
       })
       .catch(() => setError(t('skillScheduler.triggerFailed')))
       .finally(() => setTriggering(false));
+  };
+
+  const handleSaveSchedule = () => {
+    if (schedHour < 0 || schedHour > 23 || schedMinute < 0 || schedMinute > 59) {
+      alert(t('skillScheduler.scheduleInvalid'));
+      return;
+    }
+    setSavingSchedule(true);
+    api.setSkillSchedulerSchedule(token, schedHour, schedMinute)
+      .then(() => {
+        setStatus(s => s ? { ...s, scheduleHour: schedHour, scheduleMinute: schedMinute } : s);
+        alert(t('skillScheduler.scheduleSaved'));
+      })
+      .catch(() => alert(t('skillScheduler.scheduleFailed')))
+      .finally(() => setSavingSchedule(false));
   };
 
   if (error) return <p className="error">{error}</p>;
@@ -107,6 +135,33 @@ export function SkillSchedulerTab() {
         <div className="stat-card">
           <div className="stat-value">{nextRun}</div>
           <div className="stat-label">{t('skillScheduler.nextRun')}</div>
+        </div>
+        <div className="stat-card">
+          <div className="stat-label" style={{ marginBottom: 4 }}>{t('skillScheduler.scheduleTime')}</div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+            <input
+              type="number" min={0} max={23}
+              className="input-sm"
+              style={{ width: 56, textAlign: 'center' }}
+              value={schedHour}
+              onChange={e => setSchedHour(parseInt(e.target.value) || 0)}
+            />
+            <span>:</span>
+            <input
+              type="number" min={0} max={59}
+              className="input-sm"
+              style={{ width: 56, textAlign: 'center' }}
+              value={schedMinute}
+              onChange={e => setSchedMinute(parseInt(e.target.value) || 0)}
+            />
+            <button
+              className="btn-sm btn-primary"
+              onClick={handleSaveSchedule}
+              disabled={savingSchedule}
+            >
+              {savingSchedule ? '...' : t('skillScheduler.scheduleSave')}
+            </button>
+          </div>
         </div>
         <div className="stat-card">
           <button

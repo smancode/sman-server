@@ -176,5 +176,10 @@
   "skillScheduler.colWorkspace": { "text": "Workspace" },
   "skillScheduler.colClient": { "text": "Client" },
   "skillScheduler.colStatus": { "text": "Status" },
-  "skillScheduler.colReason": { "text": "Reason" }
+  "skillScheduler.colReason": { "text": "Reason" },
+  "skillScheduler.scheduleTime": { "text": "Schedule Time" },
+  "skillScheduler.scheduleSave": { "text": "Save" },
+  "skillScheduler.scheduleSaved": { "text": "Schedule updated" },
+  "skillScheduler.scheduleFailed": { "text": "Failed to update schedule" },
+  "skillScheduler.scheduleInvalid": { "text": "Invalid time (hour 0-23, minute 0-59)" }
 }

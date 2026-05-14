@@ -4,8 +4,8 @@ import type { TaskEngine } from './task-engine.js';
 import type { WsHub } from './ws-server.js';
 import type { AgentRecord } from './types.js';
 
-const SCHEDULE_HOUR = 3;
-const SCHEDULE_MINUTE = 3;
+const DEFAULT_SCHEDULE_HOUR = 3;
+const DEFAULT_SCHEDULE_MINUTE = 3;
 const CHECK_INTERVAL_MS = 60_000;
 const RECENT_THRESHOLD_MS = 60 * 60 * 1000; // 1 hour
 
@@ -30,23 +30,29 @@ export class SkillScheduler {
   private enabled = true;
   private logs: DispatchLog[] = [];
   private maxLogs = 500;
+  private scheduleHour: number;
+  private scheduleMinute: number;
 
   constructor(deps: {
     roomDB: RoomDB;
     taskDB: TaskDB;
     taskEngine: TaskEngine;
     wsHub: WsHub;
+    scheduleHour?: number;
+    scheduleMinute?: number;
   }) {
     this.roomDB = deps.roomDB;
     this.taskDB = deps.taskDB;
     this.taskEngine = deps.taskEngine;
     this.wsHub = deps.wsHub;
+    this.scheduleHour = deps.scheduleHour ?? DEFAULT_SCHEDULE_HOUR;
+    this.scheduleMinute = deps.scheduleMinute ?? DEFAULT_SCHEDULE_MINUTE;
   }
 
   start(): void {
     this.timer = setInterval(() => this.tick(), CHECK_INTERVAL_MS);
     this.timer.unref();
-    console.log(`[SkillScheduler] Started (enabled=${this.enabled}), schedule at ${SCHEDULE_HOUR}:${String(SCHEDULE_MINUTE).padStart(2, '0')}`);
+    console.log(`[SkillScheduler] Started (enabled=${this.enabled}), schedule at ${this.scheduleHour}:${String(this.scheduleMinute).padStart(2, '0')}`);
   }
 
   stop(): void {
@@ -63,12 +69,21 @@ export class SkillScheduler {
     console.log(`[SkillScheduler] ${v ? 'Enabled' : 'Disabled'}`);
   }
 
-  getStatus(): { enabled: boolean; lastRunDate: string | null; nextRun: string } {
+  setSchedule(hour: number, minute: number): void {
+    if (hour < 0 || hour > 23 || minute < 0 || minute > 59) {
+      throw new Error('Invalid schedule time');
+    }
+    this.scheduleHour = hour;
+    this.scheduleMinute = minute;
+    console.log(`[SkillScheduler] Schedule updated to ${hour}:${String(minute).padStart(2, '0')}`);
+  }
+
+  getStatus(): { enabled: boolean; lastRunDate: string | null; nextRun: string; scheduleHour: number; scheduleMinute: number } {
     const now = new Date();
     let next = new Date(now);
-    next.setHours(SCHEDULE_HOUR, SCHEDULE_MINUTE, 0, 0);
+    next.setHours(this.scheduleHour, this.scheduleMinute, 0, 0);
     if (next <= now) next.setDate(next.getDate() + 1);
-    return { enabled: this.enabled, lastRunDate: this.lastRunDate, nextRun: next.toISOString() };
+    return { enabled: this.enabled, lastRunDate: this.lastRunDate, nextRun: next.toISOString(), scheduleHour: this.scheduleHour, scheduleMinute: this.scheduleMinute };
   }
 
   getLogs(limit = 100): DispatchLog[] {
@@ -78,7 +93,7 @@ export class SkillScheduler {
   private tick(): void {
     if (!this.enabled) return;
     const now = new Date();
-    if (now.getHours() !== SCHEDULE_HOUR || now.getMinutes() !== SCHEDULE_MINUTE) return;
+    if (now.getHours() !== this.scheduleHour || now.getMinutes() !== this.scheduleMinute) return;
     const today = now.toISOString().slice(0, 10);
     if (this.lastRunDate === today) return;
     this.lastRunDate = today;
@@ -176,8 +191,12 @@ export class SkillScheduler {
   }
 
   /** Manual trigger */
-  triggerNow(): { dispatched: number; skipped: number; total: number } {
-    return this.dispatchToAllWorkspaces();
+  triggerNow(): { dispatched: number; skipped: number; total: number; totalAgents: number; recentAgents: number } {
+    const allAgents = this.roomDB.getOnlineAgents();
+    const recentAgents = this.getRecentAgents();
+    console.log(`[SkillScheduler] triggerNow: total online=${allAgents.length}, recent(1h)=${recentAgents.length}`);
+    const result = this.dispatchToAllWorkspaces();
+    return { ...result, totalAgents: allAgents.length, recentAgents: recentAgents.length };
   }
 
   private addLog(log: DispatchLog): void {

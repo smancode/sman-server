@@ -133,8 +133,10 @@ const wsHub = new WsHub(server, roomDB, PSK, taskEngine);
 // Hub API routes — registered after wsHub creation, before SPA fallback
 app.use('/api/hub', createHubApiRouter(roomDB, taskDB, PSK, taskEngine, db, wsHub));
 
-// Skill auto-updater scheduler — dispatches at 03:03 daily
-const skillScheduler = new SkillScheduler({ roomDB, taskDB, taskEngine, wsHub });
+// Skill auto-updater scheduler — dispatches at configurable time (default 03:03 daily)
+const scheduleHour = parseInt(process.env.SKILL_SCHEDULE_HOUR || '3', 10);
+const scheduleMinute = parseInt(process.env.SKILL_SCHEDULE_MINUTE || '3', 10);
+const skillScheduler = new SkillScheduler({ roomDB, taskDB, taskEngine, wsHub, scheduleHour, scheduleMinute });
 skillScheduler.start();
 
 // Admin: manual trigger for skill scheduler
@@ -177,6 +179,21 @@ app.get('/admin/skill-scheduler/logs', (req: Request, res: Response) => {
   }
   const limit = parseInt(req.query.limit as string) || 100;
   res.json(skillScheduler.getLogs(limit));
+});
+
+app.put('/admin/skill-scheduler/schedule', (req: Request, res: Response) => {
+  const auth = req.headers.authorization;
+  if (auth !== `Bearer ${ADMIN_TOKEN}`) {
+    res.status(401).json({ error: 'Unauthorized' });
+    return;
+  }
+  const { hour, minute } = req.body as { hour: number; minute: number };
+  if (typeof hour !== 'number' || typeof minute !== 'number' || hour < 0 || hour > 23 || minute < 0 || minute > 59) {
+    res.status(400).json({ error: 'Invalid schedule: hour (0-23) and minute (0-59) required' });
+    return;
+  }
+  skillScheduler.setSchedule(hour, minute);
+  res.json({ ok: true, ...skillScheduler.getStatus() });
 });
 
 // Public static pages (no auth, accessible from LAN)

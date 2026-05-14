@@ -67,6 +67,8 @@ export const api = {
     request('/skill-scheduler/status', token),
   setSkillSchedulerEnabled: (token: string, enabled: boolean) =>
     request('/skill-scheduler/enabled', token, { method: 'PUT', body: JSON.stringify({ enabled }) }),
+  setSkillSchedulerSchedule: (token: string, hour: number, minute: number) =>
+    request('/skill-scheduler/schedule', token, { method: 'PUT', body: JSON.stringify({ hour, minute }) }),
   triggerSkillScheduler: (token: string) =>
     request('/skill-scheduler/trigger', token, { method: 'POST' }),
   getSkillSchedulerLogs: (token: string, limit = 100) =>
