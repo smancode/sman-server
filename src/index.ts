@@ -65,44 +65,41 @@ app.set('trust proxy', 1);
 
 app.use(express.json({ limit: '1mb' }));
 
-app.use('/updates/sman', express.static(updatesDir));
-// Redirect proxy: when electron-updater downloads a file that is actually an external URL,
-// look up the real URL from _redirects/ and 302 redirect. This avoids Windows path issues
-// with external URLs containing : and ? characters.
-app.get('/updates/sman/:filename', (req: Request<{ filename: string }>, res: Response) => {
+function handleDownload(req: Request<{ filename: string }>, res: Response) {
   const fname = req.params.filename;
-  // Skip non-binary files (yml, blockmap, etc.) — let express.static handle them
-  if (fname.endsWith('.yml') || fname.endsWith('.blockmap')) {
-    const filePath = path.join(updatesDir, fname);
-    if (fs.existsSync(filePath)) {
-      res.sendFile(filePath);
-      return;
-    }
-    res.status(404).send('Not found');
-    return;
-  }
+  const filePath = path.join(updatesDir, fname);
+  const isBinary = !fname.endsWith('.yml') && !fname.endsWith('.blockmap');
+
+  // Check for redirect mapping (external URL)
   const redirectFile = path.join(updatesDir, '_redirects', fname);
   try {
     const targetUrl = fs.readFileSync(redirectFile, 'utf-8').trim();
-    try {
-      const ip = req.ip || req.headers['x-forwarded-for']?.toString().split(',')[0]?.trim() || 'unknown';
-      db.recordDownload(ip, fname);
-    } catch { /* ignore */ }
-    res.redirect(302, targetUrl);
-  } catch {
-    // No redirect mapping — check if actual file exists
-    const filePath = path.join(updatesDir, fname);
-    if (fs.existsSync(filePath)) {
+    if (isBinary) {
       try {
         const ip = req.ip || req.headers['x-forwarded-for']?.toString().split(',')[0]?.trim() || 'unknown';
         db.recordDownload(ip, fname);
       } catch { /* ignore */ }
-      res.sendFile(filePath);
-      return;
     }
-    res.status(404).send('Not found');
+    res.redirect(302, targetUrl);
+    return;
+  } catch { /* no redirect */ }
+
+  // Serve local file
+  if (fs.existsSync(filePath)) {
+    if (isBinary) {
+      try {
+        const ip = req.ip || req.headers['x-forwarded-for']?.toString().split(',')[0]?.trim() || 'unknown';
+        db.recordDownload(ip, fname);
+      } catch { /* ignore */ }
+    }
+    res.sendFile(filePath);
+    return;
   }
-});
+  res.status(404).send('Not found');
+}
+
+app.get('/updates/sman/:filename', handleDownload);
+app.get('/download/:filename', handleDownload);
 app.use('/updates', (_req, res) => res.status(404).send('Not found'));
 
 app.use('/api', createReportRouter(db, PSK));
@@ -185,11 +182,11 @@ app.get('/admin/skill-scheduler/logs', (req: Request, res: Response) => {
 // Public static pages (no auth, accessible from LAN)
 app.use('/pages', express.static(pagesDir));
 
-// SPA static files (localhost only) — MUST be last to avoid intercepting API routes
+// SPA static files — MUST be last to avoid intercepting API routes
 const publicDir = path.join(__dirname, 'public');
 if (fs.existsSync(path.join(publicDir, 'index.html'))) {
-  app.use(localhostOnly, express.static(publicDir));
-  app.use(localhostOnly, (req: Request, res: Response) => {
+  app.use(express.static(publicDir));
+  app.use((req: Request, res: Response) => {
     if (req.method === 'GET' && req.accepts('html')) {
       res.sendFile(path.join(publicDir, 'index.html'));
       return;
