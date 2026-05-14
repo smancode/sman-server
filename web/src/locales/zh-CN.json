@@ -33,6 +33,7 @@
   "clients.sessions": { "text": "会话数" },
   "clients.lastSeen": { "text": "最后上线" },
   "clients.firstSeen": { "text": "首次上线" },
+  "clients.workspaces": { "text": "业务系统" },
   "clients.noData": { "text": "暂无已注册的客户端" },
   "clients.loadFailed": { "text": "加载客户端列表失败" },
 
@@ -187,6 +188,7 @@
   "skillScheduler.colProject": { "text": "业务系统" },
   "skillScheduler.colWorkspace": { "text": "路径" },
   "skillScheduler.colClient": { "text": "客户端" },
+  "skillScheduler.colHostname": { "text": "主机" },
   "skillScheduler.colStatus": { "text": "状态" },
   "skillScheduler.colReason": { "text": "原因" },
   "skillScheduler.scheduleTime": { "text": "触发时间" },

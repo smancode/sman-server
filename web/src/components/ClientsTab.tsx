@@ -37,6 +37,7 @@ export function ClientsTab() {
               <th>{t('clients.sessions')}</th>
               <th>{t('clients.lastSeen')}</th>
               <th>{t('clients.firstSeen')}</th>
+              <th>{t('clients.workspaces')}</th>
             </tr>
           </thead>
           <tbody>
@@ -48,6 +49,9 @@ export function ClientsTab() {
                 <td>{c.active_sessions}</td>
                 <td>{formatDateTime(c.last_seen)}</td>
                 <td>{formatDateTime(c.first_seen)}</td>
+                <td className="mono" style={{ maxWidth: 300, whiteSpace: 'pre-wrap', fontSize: 11 }}>
+                  {c.workspaces?.map(ws => ws.split(/[/\\]/).pop()).join(', ') || '-'}
+                </td>
               </tr>
             ))}
           </tbody>

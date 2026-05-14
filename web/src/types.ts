@@ -13,6 +13,7 @@ export interface ClientRecord {
   first_seen: string;
   last_seen: string;
   active_sessions: number;
+  workspaces?: string[];
 }
 
 export interface Broadcast {

@@ -42,7 +42,12 @@ export function createAdminRouter(db: HubDB, adminToken: string, updatesDir: str
   });
 
   router.get('/clients', (_req: Request, res: Response) => {
-    res.json(db.getAllClients());
+    const clients = db.getAllClients();
+    const result = clients.map(c => ({
+      ...c,
+      workspaces: db.getClientWorkspaces(c.client_id),
+    }));
+    res.json(result);
   });
 
   router.put('/upload', (req: Request, res: Response) => {

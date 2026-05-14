@@ -12,6 +12,8 @@ export interface ReportPayload {
   activeSessions: number;
   /** ISO 8601 report time */
   reportTime: string;
+  /** Active workspace paths loaded by this client */
+  workspaces?: string[];
 }
 
 /** Client -> Server: broadcast query payload */

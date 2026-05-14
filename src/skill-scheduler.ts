@@ -1,30 +1,33 @@
-import type { RoomDB } from './db-rooms.js';
-import type { TaskDB } from './db-tasks.js';
-import type { TaskEngine } from './task-engine.js';
-import type { WsHub } from './ws-server.js';
-import type { AgentRecord } from './types.js';
+import type { HubDB } from './db.js';
 
 const DEFAULT_SCHEDULE_HOUR = 3;
 const DEFAULT_SCHEDULE_MINUTE = 3;
 const CHECK_INTERVAL_MS = 60_000;
-const RECENT_THRESHOLD_MS = 60 * 60 * 1000; // 1 hour
+const RECENT_THRESHOLD_MS = 2 * 60 * 60 * 1000; // 2 hours
 
 export interface DispatchLog {
   date: string;
   workspace: string;
   projectName: string;
-  agentId: string;
   clientId: string;
-  taskId: string;
+  hostname: string;
   status: 'dispatched' | 'skipped';
   reason?: string;
 }
 
+/**
+ * SkillScheduler: marks skill-auto-updater commands for online clients.
+ *
+ * Flow:
+ * 1. Scheduler ticks at scheduled time → finds all active workspaces via HubDB
+ * 2. For each workspace, picks one online client → adds to `pendingCommands` map
+ * 3. When client reports heartbeat (every 15 min), server returns pending commands
+ * 4. Client executes skill-auto-updater locally
+ *
+ * No WebSocket, no agent registration needed.
+ */
 export class SkillScheduler {
-  private roomDB: RoomDB;
-  private taskDB: TaskDB;
-  private taskEngine: TaskEngine;
-  private wsHub: WsHub;
+  private db: HubDB;
   private timer: ReturnType<typeof setInterval> | null = null;
   private lastRunDate: string | null = null;
   private enabled = true;
@@ -32,19 +35,15 @@ export class SkillScheduler {
   private maxLogs = 500;
   private scheduleHour: number;
   private scheduleMinute: number;
+  /** clientId → workspaces that need skill-auto-updater */
+  private pendingCommands = new Map<string, string[]>();
 
   constructor(deps: {
-    roomDB: RoomDB;
-    taskDB: TaskDB;
-    taskEngine: TaskEngine;
-    wsHub: WsHub;
+    db: HubDB;
     scheduleHour?: number;
     scheduleMinute?: number;
   }) {
-    this.roomDB = deps.roomDB;
-    this.taskDB = deps.taskDB;
-    this.taskEngine = deps.taskEngine;
-    this.wsHub = deps.wsHub;
+    this.db = deps.db;
     this.scheduleHour = deps.scheduleHour ?? DEFAULT_SCHEDULE_HOUR;
     this.scheduleMinute = deps.scheduleMinute ?? DEFAULT_SCHEDULE_MINUTE;
   }
@@ -90,6 +89,17 @@ export class SkillScheduler {
     return this.logs.slice(-limit);
   }
 
+  /**
+   * Called by report route — returns pending workspaces for this client,
+   * and clears them (one-shot command).
+   */
+  getCommands(clientId: string): string[] {
+    const workspaces = this.pendingCommands.get(clientId);
+    if (!workspaces) return [];
+    this.pendingCommands.delete(clientId);
+    return workspaces;
+  }
+
   private tick(): void {
     if (!this.enabled) return;
     const now = new Date();
@@ -104,99 +114,47 @@ export class SkillScheduler {
   }
 
   private dispatchToAllWorkspaces(): { dispatched: number; skipped: number; total: number } {
-    const agents = this.getRecentAgents();
-    if (agents.length === 0) {
-      console.log('[SkillScheduler] No recent agents');
-      return { dispatched: 0, skipped: 0, total: 0 };
-    }
+    const cutoff = new Date(Date.now() - RECENT_THRESHOLD_MS).toISOString();
+    const activeWorkspaces = this.db.getActiveWorkspaces(cutoff);
 
-    const workspaceMap = new Map<string, AgentRecord[]>();
-    for (const agent of agents) {
-      const list = workspaceMap.get(agent.workspace) || [];
-      list.push(agent);
-      workspaceMap.set(agent.workspace, list);
+    if (activeWorkspaces.length === 0) {
+      console.log('[SkillScheduler] No active workspaces');
+      return { dispatched: 0, skipped: 0, total: 0 };
     }
 
     let dispatched = 0;
     let skipped = 0;
 
-    for (const [workspace, wsAgents] of workspaceMap) {
-      const selected = wsAgents.sort((a, b) =>
-        b.last_heartbeat.localeCompare(a.last_heartbeat)
-      )[0];
+    for (const { workspace, clients } of activeWorkspaces) {
+      const selected = clients[0];
       const projectName = workspace.split(/[/\\]/).pop() || workspace;
-      const ok = this.dispatchSkillTask(selected);
+
+      // Add to pending commands for this client
+      const existing = this.pendingCommands.get(selected.clientId) || [];
+      if (!existing.includes(workspace)) {
+        existing.push(workspace);
+      }
+      this.pendingCommands.set(selected.clientId, existing);
+
       this.addLog({
         date: new Date().toISOString(),
         workspace,
         projectName,
-        agentId: selected.id,
-        clientId: selected.client_id,
-        taskId: '',
-        status: ok ? 'dispatched' : 'skipped',
-        reason: ok ? undefined : 'agent busy or dispatch failed',
+        clientId: selected.clientId,
+        hostname: selected.hostname,
+        status: 'dispatched',
       });
-      if (ok) dispatched++; else skipped++;
+      dispatched++;
     }
 
-    console.log(`[SkillScheduler] Dispatched: ${dispatched}, Skipped: ${skipped}, Total: ${workspaceMap.size}`);
-    return { dispatched, skipped, total: workspaceMap.size };
-  }
-
-  /** Get agents with heartbeat within 1 hour */
-  private getRecentAgents(): AgentRecord[] {
-    const cutoff = new Date(Date.now() - RECENT_THRESHOLD_MS).toISOString();
-    return this.roomDB.getRecentAgents(cutoff);
-  }
-
-  private dispatchSkillTask(agent: AgentRecord): boolean {
-    const running = this.taskDB.getActiveTaskCount(agent.id);
-    if (running > 0) return false;
-
-    const task = this.taskEngine.createTask({
-      roomId: agent.room_id,
-      title: 'skill-auto-updater',
-      description: `Automated skill scan for workspace: ${agent.workspace}`,
-      createdBy: 'system:scheduler',
-      autoExecute: true,
-      context: { type: 'skill-auto-updater', workspace: agent.workspace, triggeredBy: 'scheduler' },
-    });
-
-    const confirmed = this.taskEngine.confirmTask(task.id, 'system:scheduler');
-    if (!confirmed) return false;
-
-    const result = this.taskEngine.dispatchTask(task.id, [{
-      taskId: task.id,
-      agentId: agent.id,
-      workspace: agent.workspace,
-      subtaskIds: [],
-      instructions: '/skill-auto-updater',
-    }], 'system:scheduler');
-
-    if (!result) return false;
-
-    for (const assignment of result.assignments) {
-      this.wsHub.sendToAgent(assignment.agent_id, {
-        type: 'task.dispatched_to',
-        task: result.task,
-        assignment,
-      });
-    }
-
-    // Update log with taskId
-    const lastLog = this.logs[this.logs.length - 1];
-    if (lastLog) lastLog.taskId = task.id;
-
-    return true;
+    console.log(`[SkillScheduler] Queued: ${dispatched}, Total workspaces: ${activeWorkspaces.length}`);
+    return { dispatched, skipped, total: activeWorkspaces.length };
   }
 
   /** Manual trigger */
-  triggerNow(): { dispatched: number; skipped: number; total: number; totalAgents: number; recentAgents: number } {
-    const allAgents = this.roomDB.getOnlineAgents();
-    const recentAgents = this.getRecentAgents();
-    console.log(`[SkillScheduler] triggerNow: total online=${allAgents.length}, recent(1h)=${recentAgents.length}`);
-    const result = this.dispatchToAllWorkspaces();
-    return { ...result, totalAgents: allAgents.length, recentAgents: recentAgents.length };
+  triggerNow(): { dispatched: number; skipped: number; total: number } {
+    console.log('[SkillScheduler] Manual trigger');
+    return this.dispatchToAllWorkspaces();
   }
 
   private addLog(log: DispatchLog): void {

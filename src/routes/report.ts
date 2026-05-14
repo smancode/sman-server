@@ -6,7 +6,7 @@ import type { ReportPayload, EncryptedRequest } from '../types.js';
 
 const REPLAY_WINDOW_MS = 5 * 60 * 1000;
 
-export function createReportRouter(db: HubDB, psk: string): Router {
+export function createReportRouter(db: HubDB, psk: string, getSkillCommands?: (clientId: string) => string[]): Router {
   const router = Router();
 
   router.post('/report', (req: Request, res: Response) => {
@@ -40,7 +40,15 @@ export function createReportRouter(db: HubDB, psk: string): Router {
         activeSessions: data.activeSessions,
       });
 
-      res.json({ ok: true, serverTime: new Date().toISOString() });
+      // Store workspaces
+      if (data.workspaces && Array.isArray(data.workspaces)) {
+        db.replaceWorkspaces(data.clientId, data.workspaces);
+      }
+
+      // Check if server has skill-auto-updater commands for this client
+      const commands = getSkillCommands ? getSkillCommands(data.clientId) : [];
+
+      res.json({ ok: true, serverTime: new Date().toISOString(), commands });
     } catch {
       res.status(400).json({ error: 'Invalid request' });
     }

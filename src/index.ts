@@ -60,6 +60,12 @@ const db = new HubDB(path.join(DATA_DIR, 'hub.db'));
 const roomDB = new RoomDB(path.join(DATA_DIR, 'rooms.db'));
 const taskDB = new TaskDB(path.join(DATA_DIR, 'tasks.db'));
 const taskEngine = new TaskEngine(taskDB);
+
+// Skill auto-updater scheduler — pull model via report response
+const scheduleHour = parseInt(process.env.SKILL_SCHEDULE_HOUR || '3', 10);
+const scheduleMinute = parseInt(process.env.SKILL_SCHEDULE_MINUTE || '3', 10);
+const skillScheduler = new SkillScheduler({ db, scheduleHour, scheduleMinute });
+
 const app = express();
 app.set('trust proxy', 1);
 
@@ -102,7 +108,7 @@ app.get('/updates/sman/:filename', handleDownload);
 app.get('/download/:filename', handleDownload);
 app.use('/updates', (_req, res) => res.status(404).send('Not found'));
 
-app.use('/api', createReportRouter(db, PSK));
+app.use('/api', createReportRouter(db, PSK, (clientId) => skillScheduler.getCommands(clientId)));
 app.use('/api', createBroadcastRouter(db, PSK));
 app.get('/health', (_req, res) => res.json({ ok: true }));
 
@@ -126,18 +132,14 @@ app.use('/admin', createTasksRouter(taskDB, ADMIN_TOKEN));
 const server = app.listen(PORT, () => {
   console.log(`sman-server listening on port ${PORT}`);
   console.log(`Updates served at /updates/sman`);
+  // Start scheduler after server is ready
+  skillScheduler.start();
 });
 
 const wsHub = new WsHub(server, roomDB, PSK, taskEngine);
 
 // Hub API routes — registered after wsHub creation, before SPA fallback
 app.use('/api/hub', createHubApiRouter(roomDB, taskDB, PSK, taskEngine, db, wsHub));
-
-// Skill auto-updater scheduler — dispatches at configurable time (default 03:03 daily)
-const scheduleHour = parseInt(process.env.SKILL_SCHEDULE_HOUR || '3', 10);
-const scheduleMinute = parseInt(process.env.SKILL_SCHEDULE_MINUTE || '3', 10);
-const skillScheduler = new SkillScheduler({ roomDB, taskDB, taskEngine, wsHub, scheduleHour, scheduleMinute });
-skillScheduler.start();
 
 // Admin: manual trigger for skill scheduler
 app.post('/admin/skill-scheduler/trigger', (req: Request, res: Response) => {

@@ -16,9 +16,8 @@ interface DispatchLog {
   date: string;
   workspace: string;
   projectName: string;
-  agentId: string;
   clientId: string;
-  taskId: string;
+  hostname: string;
   status: 'dispatched' | 'skipped';
   reason?: string;
 }
@@ -186,9 +185,8 @@ export function SkillSchedulerTab() {
                 <th>{t('skillScheduler.colDate')}</th>
                 <th>{t('skillScheduler.colProject')}</th>
                 <th>{t('skillScheduler.colWorkspace')}</th>
-                <th>{t('skillScheduler.colClient')}</th>
+                <th>{t('skillScheduler.colHostname')}</th>
                 <th>{t('skillScheduler.colStatus')}</th>
-                <th>{t('skillScheduler.colReason')}</th>
               </tr>
             </thead>
             <tbody>
@@ -197,14 +195,13 @@ export function SkillSchedulerTab() {
                   <td>{formatDateTime(log.date)}</td>
                   <td><strong>{log.projectName}</strong></td>
                   <td className="mono">{log.workspace}</td>
-                  <td className="mono">{log.clientId}</td>
+                  <td>{log.hostname}</td>
                   <td>
                     <span className={`badge ${log.status === 'dispatched' ? 'badge-green' : 'badge-yellow'}`}>
                       <span className="badge-dot" />
                       {log.status}
                     </span>
                   </td>
-                  <td>{log.reason || '-'}</td>
                 </tr>
               ))}
             </tbody>

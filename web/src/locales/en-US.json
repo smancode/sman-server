@@ -33,6 +33,7 @@
   "clients.sessions": { "text": "Sessions" },
   "clients.lastSeen": { "text": "Last Seen" },
   "clients.firstSeen": { "text": "First Seen" },
+  "clients.workspaces": { "text": "Workspaces" },
   "clients.noData": { "text": "No clients registered yet" },
   "clients.loadFailed": { "text": "Failed to load clients" },
 
@@ -175,6 +176,7 @@
   "skillScheduler.colProject": { "text": "Project" },
   "skillScheduler.colWorkspace": { "text": "Workspace" },
   "skillScheduler.colClient": { "text": "Client" },
+  "skillScheduler.colHostname": { "text": "Host" },
   "skillScheduler.colStatus": { "text": "Status" },
   "skillScheduler.colReason": { "text": "Reason" },
   "skillScheduler.scheduleTime": { "text": "Schedule Time" },

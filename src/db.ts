@@ -151,6 +151,14 @@ export class HubDB {
         created_at TEXT NOT NULL DEFAULT (datetime('now'))
       );
       CREATE INDEX IF NOT EXISTS idx_download_logs_created ON download_logs(created_at);
+
+      CREATE TABLE IF NOT EXISTS client_workspaces (
+        client_id TEXT NOT NULL,
+        workspace TEXT NOT NULL,
+        updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+        PRIMARY KEY (client_id, workspace)
+      );
+      CREATE INDEX IF NOT EXISTS idx_client_workspaces_updated ON client_workspaces(updated_at);
     `);
   }
 
@@ -358,6 +366,47 @@ export class HubDB {
 
   deleteErrorReport(id: number): void {
     this.db.prepare('DELETE FROM error_reports WHERE id = ?').run(id);
+  }
+
+  /** Replace all workspaces for a client (called on each report) */
+  replaceWorkspaces(clientId: string, workspaces: string[]): void {
+    const now = new Date().toISOString();
+    this.db.transaction(() => {
+      this.db.prepare('DELETE FROM client_workspaces WHERE client_id = ?').run(clientId);
+      const insert = this.db.prepare(
+        'INSERT INTO client_workspaces (client_id, workspace, updated_at) VALUES (?, ?, ?)'
+      );
+      for (const ws of workspaces) {
+        insert.run(clientId, ws, now);
+      }
+    })();
+  }
+
+  /** Get workspaces for a specific client */
+  getClientWorkspaces(clientId: string): string[] {
+    const rows = this.db.prepare(
+      'SELECT workspace FROM client_workspaces WHERE client_id = ? ORDER BY workspace'
+    ).all(clientId) as { workspace: string }[];
+    return rows.map(r => r.workspace);
+  }
+
+  /** Get distinct workspaces with at least one online client (seen within cutoff) */
+  getActiveWorkspaces(cutoffIso: string): { workspace: string; clients: { clientId: string; hostname: string }[] }[] {
+    const rows = this.db.prepare(`
+      SELECT cw.workspace, cw.client_id, c.hostname
+      FROM client_workspaces cw
+      JOIN clients c ON c.client_id = cw.client_id
+      WHERE c.last_seen >= ?
+      ORDER BY cw.workspace, c.hostname
+    `).all(cutoffIso) as { workspace: string; client_id: string; hostname: string }[];
+
+    const map = new Map<string, { clientId: string; hostname: string }[]>();
+    for (const row of rows) {
+      const list = map.get(row.workspace) || [];
+      list.push({ clientId: row.client_id, hostname: row.hostname });
+      map.set(row.workspace, list);
+    }
+    return Array.from(map.entries()).map(([workspace, clients]) => ({ workspace, clients }));
   }
 
   close(): void {
