@@ -5,174 +5,351 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>Sman - AI原生与Agent协作平台</title>
 <style>
-  *{margin:0;padding:0;box-sizing:border-box}
-  body{background:#050510;color:#e0e0e0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;overflow:hidden;width:100vw;height:100vh}
-  canvas#s{position:fixed;top:0;left:0;width:100vw;height:100vh;z-index:0;image-rendering:pixelated}
-  .ls{position:fixed;top:16px;right:20px;z-index:100;display:flex;border-radius:6px;overflow:hidden;border:1px solid rgba(255,255,255,.1)}
-  .lb{background:rgba(10,10,30,.6);color:rgba(255,255,255,.4);border:none;padding:6px 14px;font-size:13px;font-weight:500;cursor:pointer;backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px)}
-  .lb:hover{color:rgba(255,255,255,.7);background:rgba(10,10,30,.8)}
-  .lb.a{color:#00ff41;background:rgba(0,255,65,.1)}
-  .cc{position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);z-index:10;background:rgba(10,10,30,.8);border:1px solid rgba(0,255,65,.08);border-radius:16px;padding:24px 32px;text-align:center;max-width:580px;width:85vw}
-  .lo{font-size:28px;font-weight:700;letter-spacing:2px;margin-bottom:4px;background:linear-gradient(135deg,#00ff41,#00cc33,#33ff77);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}
-  .tl{font-size:13px;color:rgba(255,255,255,.4);margin-bottom:24px;letter-spacing:1px}
-  .cr{display:flex;align-items:flex-start;justify-content:center;gap:28px;flex-wrap:wrap}
-  .ci{display:flex;flex-direction:column;align-items:center;gap:10px}
-  .ci a{text-decoration:none}
-  .gb{display:flex;flex-direction:column;align-items:center;gap:6px;border-radius:12px;border:1px solid rgba(255,255,255,.08);background:linear-gradient(135deg,rgba(255,215,0,.06),rgba(255,140,0,.03));padding:16px 24px;cursor:pointer;transition:transform .2s,box-shadow .2s,border-color .2s}
-  .gb:hover{transform:scale(1.03);box-shadow:0 4px 20px rgba(255,200,0,.1);border-color:rgba(255,200,0,.2)}
-  .gb svg{width:24px;height:24px;fill:#e0e0e0}
-  .gb .si{width:18px;height:18px;fill:#fbbf24}
-  .gb .bt{font-size:13px;font-weight:600;color:#e0e0e0}
-  .qi{width:130px;height:130px;border-radius:12px;border:2px solid rgba(255,200,0,.4);object-fit:cover;loading:"lazy"}
-  .db{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;border-radius:12px;border:1px solid rgba(0,255,65,.15);background:linear-gradient(135deg,rgba(0,255,65,.08),rgba(0,200,50,.04));padding:20px 24px;min-height:100px;cursor:pointer;transition:transform .2s,box-shadow .2s,border-color .2s;text-decoration:none}
-  .db:hover{transform:scale(1.03);box-shadow:0 4px 20px rgba(0,255,65,.12);border-color:rgba(0,255,65,.3)}
-  .db svg{width:24px;height:24px;stroke:#00ff41;fill:none;stroke-width:2}
-  .db .bt{font-size:13px;font-weight:600;color:#e0e0e0}
-  .cl{font-size:11px;color:rgba(255,255,255,.35);line-height:1.6;max-width:140px;text-align:center}
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: #050510;
+    color: #e0e0e0;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    overflow: hidden;
+    width: 100vw;
+    height: 100vh;
+  }
+  canvas#starfield {
+    position: fixed;
+    top: 0; left: 0;
+    width: 100vw; height: 100vh;
+    z-index: 0;
+  }
+  .lang-switch {
+    position: fixed;
+    top: 16px;
+    right: 20px;
+    z-index: 100;
+    display: flex;
+    gap: 0;
+    border-radius: 6px;
+    overflow: hidden;
+    border: 1px solid rgba(255,255,255,0.1);
+  }
+  .lang-btn {
+    background: rgba(10, 10, 30, 0.6);
+    color: rgba(255,255,255,0.4);
+    border: none;
+    padding: 6px 14px;
+    font-size: 13px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s;
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+  }
+  .lang-btn:hover {
+    color: rgba(255,255,255,0.7);
+    background: rgba(10, 10, 30, 0.8);
+  }
+  .lang-btn.active {
+    color: #00ff41;
+    background: rgba(0, 255, 65, 0.1);
+  }
+  .center-card {
+    position: fixed;
+    top: 50%; left: 50%;
+    transform: translate(-50%, -50%);
+    z-index: 10;
+    background: rgba(10, 10, 30, 0.35);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border: 1px solid rgba(0, 255, 65, 0.08);
+    border-radius: 16px;
+    padding: 24px 32px;
+    text-align: center;
+    max-width: 580px;
+    width: 85vw;
+  }
+  .logo {
+    font-size: 28px;
+    font-weight: 700;
+    letter-spacing: 2px;
+    margin-bottom: 4px;
+    background: linear-gradient(135deg, #00ff41, #00cc33, #33ff77);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+  .tagline {
+    font-size: 13px;
+    color: rgba(255,255,255,0.4);
+    margin-bottom: 24px;
+    letter-spacing: 1px;
+  }
+  .cards-row {
+    display: flex;
+    align-items: flex-start;
+    justify-content: center;
+    gap: 28px;
+    flex-wrap: wrap;
+  }
+  .card-item {
+    -webkit-touch-callout: default;
+    touch-callout: default;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 10px;
+  }
+  .card-item a {
+    text-decoration: none;
+  }
+  .github-btn {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+    border-radius: 12px;
+    border: 1px solid rgba(255,255,255,0.08);
+    background: linear-gradient(135deg, rgba(255,215,0,0.06), rgba(255,140,0,0.03));
+    padding: 16px 24px;
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+  .github-btn:hover {
+    transform: scale(1.03);
+    box-shadow: 0 4px 20px rgba(255, 200, 0, 0.1);
+    border-color: rgba(255, 200, 0, 0.2);
+  }
+  .github-btn svg { width: 24px; height: 24px; fill: #e0e0e0; }
+  .github-btn .star-icon { width: 18px; height: 18px; fill: #fbbf24; }
+  .github-btn .btn-text {
+    font-size: 13px;
+    font-weight: 600;
+    color: #e0e0e0;
+  }
+  .qr-img {
+    -webkit-touch-callout: default;
+    width: 130px;
+    height: 130px;
+    border-radius: 12px;
+    border: 2px solid rgba(255, 200, 0, 0.4);
+    object-fit: cover;
+  }
+  .download-btn {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    border-radius: 12px;
+    border: 1px solid rgba(0, 255, 65, 0.15);
+    background: linear-gradient(135deg, rgba(0, 255, 65, 0.08), rgba(0, 200, 50, 0.04));
+    padding: 20px 24px;
+    min-height: 100px;
+    cursor: pointer;
+    transition: all 0.2s;
+    text-decoration: none;
+  }
+  .download-btn:hover {
+    transform: scale(1.03);
+    box-shadow: 0 4px 20px rgba(0, 255, 65, 0.12);
+    border-color: rgba(0, 255, 65, 0.3);
+  }
+  .download-btn svg { width: 24px; height: 24px; stroke: #00ff41; fill: none; stroke-width: 2; }
+  .download-btn .btn-text {
+    font-size: 13px;
+    font-weight: 600;
+    color: #e0e0e0;
+  }
+  .card-label {
+    font-size: 11px;
+    color: rgba(255,255,255,0.35);
+    line-height: 1.6;
+    max-width: 140px;
+    text-align: center;
+  }
 </style>
 </head>
 <body>
 
-<canvas id="s"></canvas>
+<canvas id="starfield"></canvas>
 
-<div class="ls">
-  <button class="lb a" data-lang="zh">中</button>
-  <button class="lb" data-lang="en">En</button>
+<div class="lang-switch">
+  <button class="lang-btn active" data-lang="zh">中</button>
+  <button class="lang-btn" data-lang="en">En</button>
 </div>
 
-<div class="cc">
-  <div class="lo">SMAN</div>
-  <div class="tl" data-i18n="tagline">从AI助理到AI同事</div>
-  <div class="cr">
-    <div class="ci">
+<div class="center-card">
+  <div class="logo">SMAN</div>
+  <div class="tagline" data-i18n="tagline">从AI助理到AI同事</div>
+
+  <div class="cards-row">
+    <div class="card-item">
       <a href="https://github.com/smancode/sman" target="_blank" rel="noopener">
-        <div class="gb">
+        <div class="github-btn">
           <svg viewBox="0 0 24 24"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/></svg>
-          <span class="bt" data-i18n="starBtn">Star on GitHub</span>
-          <svg class="si" viewBox="0 0 24 24"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
+          <span class="btn-text" data-i18n="starBtn">Star on GitHub</span>
+          <svg class="star-icon" viewBox="0 0 24 24"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
         </div>
       </a>
-      <p class="cl" data-i18n="starDesc">Give us a star!<br/>开源免费，持续更新</p>
+      <p class="card-label" data-i18n="starDesc">Give us a star!<br/>开源免费，持续更新</p>
     </div>
-    <div class="ci">
-      <a href="https://www.smancode.com/download/windows-x64" class="db" download>
+
+    <div class="card-item">
+      <a href="https://www.smancode.com/download/windows-x64" class="download-btn" download>
         <svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-        <span class="bt" data-i18n="dlBtn">Download Windows</span>
+        <span class="btn-text" data-i18n="dlBtn">Download Windows</span>
       </a>
-      <p class="cl" data-i18n="dlDesc">Windows x64 安装包<br/>v26.513.17</p>
+      <p class="card-label" data-i18n="dlDesc">Windows x64 安装包<br/>v26.513.17</p>
     </div>
-    <div class="ci">
-      <img class="qi" src="https://h5.smancode.com/qrsman/wechat-cropped.png" alt="微信群二维码" loading="lazy" />
-      <p class="cl" data-i18n="qrDesc">扫码加入微信群<br/>交流反馈、获取帮助</p>
+
+    <div class="card-item">
+      <img class="qr-img" src="https://h5.smancode.com/qrsman/wechat-cropped.png" alt="微信群二维码" />
+      <p class="card-label" data-i18n="qrDesc">扫码加入微信群<br/>交流反馈、获取帮助</p>
     </div>
   </div>
 </div>
 
 <script>
-// i18n
-(function(){
-var T={zh:{title:'Sman - AI原生与Agent协作平台',tagline:'从AI助理到AI同事',starBtn:'Star on GitHub',starDesc:'Give us a star!<br/>开源免费，持续更新',dlBtn:'Download Windows',dlDesc:'Windows x64 安装包<br/>v26.513.17',qrDesc:'扫码加入微信群<br/>交流反馈、获取帮助'},en:{title:'Sman - AI-Native Agent Collaboration Platform',tagline:'From AI Assistant to AI Colleague',starBtn:'Star on GitHub',starDesc:'Give us a star!<br/>Open source, free, always improving',dlBtn:'Download Windows',dlDesc:'Windows x64 Installer<br/>v26.513.17',qrDesc:'Scan to join WeChat Group<br/>Feedback & Support'}};
-var i18nEls=document.querySelectorAll('[data-i18n]');
-var langBtns=document.querySelectorAll('.lb');
-function setLang(l){
-  var t=T[l];document.title=t.title;document.documentElement.lang=l==='zh'?'zh-CN':'en';
-  for(var i=0;i<i18nEls.length;i++){var k=i18nEls[i].getAttribute('data-i18n');if(t[k]!==undefined)i18nEls[i].innerHTML=t[k]}
-  for(var i=0;i<langBtns.length;i++){var a=langBtns[i].classList;a.contains('a')&&a.remove('a');langBtns[i].getAttribute('data-lang')===l&&a.add('a')}
-  try{localStorage.setItem('sman-locale',l)}catch(e){}
-}
-for(var i=0;i<langBtns.length;i++)langBtns[i].onclick=function(){setLang(this.getAttribute('data-lang'))};
-var s=null;try{s=localStorage.getItem('sman-locale')}catch(e){}
-if(!s&&navigator.language)s=navigator.language[0]==='z'&&navigator.language[1]==='h'?'zh':'en';
-setLang(s||'zh');
-})();
+(function() {
+  var i18n = {
+    zh: {
+      title: 'Sman - AI原生与Agent协作平台',
+      tagline: '从AI助理到AI同事',
+      starBtn: 'Star on GitHub',
+      starDesc: 'Give us a star!<br/>开源免费，持续更新',
+      dlBtn: 'Download Windows',
+      dlDesc: 'Windows x64 安装包<br/>v26.513.17',
+      qrDesc: '扫码加入微信群<br/>交流反馈、获取帮助'
+    },
+    en: {
+      title: 'Sman - AI-Native Agent Collaboration Platform',
+      tagline: 'From AI Assistant to AI Colleague',
+      starBtn: 'Star on GitHub',
+      starDesc: 'Give us a star!<br/>Open source, free, always improving',
+      dlBtn: 'Download Windows',
+      dlDesc: 'Windows x64 Installer<br/>v26.513.17',
+      qrDesc: 'Scan to join WeChat Group<br/>Feedback & Support'
+    }
+  };
 
-// Starfield — performance-optimized
-(function(){
-var c=document.getElementById('s');
-var ctx=c.getContext('2d',{alpha:false});
-var N=80,SPEED=0.016;
-var CHARS='ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789@#$%&*+=~';
-var CN=CHARS.length,AC=32;
-
-// Build glyph atlas once
-var atlas=document.createElement('canvas');
-atlas.width=AC*CN;atlas.height=AC;
-var ax=atlas.getContext('2d');
-ax.font=AC-4+'px monospace';ax.fillStyle='#00ff41';ax.textBaseline='middle';ax.textAlign='center';
-for(var i=0;i<CN;i++)ax.fillText(CHARS[i],i*AC+AC/2,AC/2);
-
-// Pre-render glow sprite (opaque black bg with green glow)
-var GLOW_R=120;
-var glowC=document.createElement('canvas');
-glowC.width=GLOW_R*2;glowC.height=GLOW_R*2;
-var gx=glowC.getContext('2d');
-gx.fillStyle='#050510';gx.fillRect(0,0,GLOW_R*2,GLOW_R*2);
-
-var stars=new Array(N);
-var W=0,H=0,hW=0,hH=0,dpr=1;
-var visible=true,lastT=0,frame=0;
-var FD=33; // ~30fps
-
-function mkStar(){return{x:(Math.random()-.5)*W*2,y:(Math.random()-.5)*H*2,z:Math.random()*2,ci:Math.random()*CN|0}}
-
-function resize(){
-  var nd=Math.min(window.devicePixelRatio||1,1.5);
-  var nw=window.innerWidth,nh=window.innerHeight;
-  if(nd===dpr&&nw===W&&nh===H)return;
-  dpr=nd;W=nw;H=nh;hW=W/2;hH=H/2;
-  c.width=W*dpr|0;c.height=H*dpr|0;
-  ctx.setTransform(dpr,0,0,dpr,0,0);
-  for(var i=0;i<N;i++)if(!stars[i])stars[i]=mkStar();
-  ctx.fillStyle='#050510';ctx.fillRect(0,0,W,H);
-}
-
-function draw(now){
-  requestAnimationFrame(draw);
-  if(!visible)return;
-  var dt=now-lastT;
-  if(dt<FD)return;
-  lastT=now-(dt%FD);
-  frame++;
-
-  // Trail: semi-transparent overlay
-  ctx.globalAlpha=0.12;
-  ctx.fillStyle='#050510';
-  ctx.fillRect(0,0,W,H);
-  ctx.globalAlpha=1;
-
-  // Glow: pulse intensity via alpha, draw pre-rendered sprite
-  var pulse=0.6+0.4*Math.sin(frame*0.002);
-  ctx.globalAlpha=0.06*pulse;
-  ctx.drawImage(glowC,hW-GLOW_R,hH-GLOW_R);
-  ctx.globalAlpha=1;
-
-  // Stars
-  var m=20;
-  for(var i=0;i<N;i++){
-    var s=stars[i];
-    s.z-=SPEED;
-    if(s.z<=0.001){s.x=(Math.random()-.5)*W*2;s.y=(Math.random()-.5)*H*2;s.z=2;s.ci=Math.random()*CN|0;continue}
-    var sx=hW+(s.x/s.z)*0.5;
-    var sy=hH+(s.y/s.z)*0.5;
-    if(sx<-m||sx>W+m||sy<-m||sy>H+m){s.x=(Math.random()-.5)*W*2;s.y=(Math.random()-.5)*H*2;s.z=2;s.ci=Math.random()*CN|0;continue}
-    var p=1-s.z*0.5;
-    var sz=p*22;
-    if(sz<6)sz=6;else if(sz>20)sz=20;
-    var a=p*1.5;if(a>1)a=1;
-    ctx.globalAlpha=a;
-    ctx.drawImage(atlas,s.ci*AC,0,AC,AC,sx-sz*.5,sy-sz*.5,sz,sz);
+  function setLang(lang) {
+    var texts = i18n[lang];
+    document.title = texts.title;
+    document.documentElement.lang = lang === 'zh' ? 'zh-CN' : 'en';
+    document.querySelectorAll('[data-i18n]').forEach(function(el) {
+      var key = el.getAttribute('data-i18n');
+      if (texts[key] !== undefined) el.innerHTML = texts[key];
+    });
+    document.querySelectorAll('.lang-btn').forEach(function(btn) {
+      btn.classList.toggle('active', btn.getAttribute('data-lang') === lang);
+    });
+    try { localStorage.setItem('sman-locale', lang); } catch(e) {}
   }
-  ctx.globalAlpha=1;
-}
 
-document.addEventListener('visibilitychange',function(){visible=!document.hidden;if(visible)lastT=performance.now()});
-window.addEventListener('resize',resize);
-resize();
-lastT=performance.now();
-requestAnimationFrame(draw);
+  document.querySelectorAll('.lang-btn').forEach(function(btn) {
+    btn.addEventListener('click', function() {
+      setLang(this.getAttribute('data-lang'));
+    });
+  });
+
+  var saved = null;
+  try { saved = localStorage.getItem('sman-locale'); } catch(e) {}
+  if (!saved && navigator.language) {
+    saved = navigator.language.startsWith('zh') ? 'zh' : 'en';
+  }
+  setLang(saved || 'zh');
 })();
 
-fetch('/api/pageview',{method:'POST'}).catch(function(){});
+(function() {
+  var canvas = document.getElementById('starfield');
+  var ctx = canvas.getContext('2d');
+  var CHARS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789@#$%&*+=~';
+  var STAR_COUNT = 100;
+  var SPEED = 0.008;
+  var BG = '#050510';
+  var STAR_COLOR = '#00ff41';
+  var ATLAS_FONT = 28;
+  var ATLAS_CELL = 32;
+
+  function buildAtlas() {
+    var c = document.createElement('canvas');
+    c.width = ATLAS_CELL * CHARS.length;
+    c.height = ATLAS_CELL;
+    var x = c.getContext('2d');
+    x.font = ATLAS_FONT + 'px monospace';
+    x.fillStyle = STAR_COLOR;
+    x.textBaseline = 'middle';
+    x.textAlign = 'center';
+    for (var i = 0; i < CHARS.length; i++) {
+      x.fillText(CHARS[i], i * ATLAS_CELL + ATLAS_CELL / 2, ATLAS_CELL / 2);
+    }
+    return c;
+  }
+
+  var atlas = buildAtlas();
+
+  function makeStar(w, h, rz) {
+    return {
+      x: (Math.random() - 0.5) * w * 2,
+      y: (Math.random() - 0.5) * h * 2,
+      z: rz ? Math.random() * 0.01 : Math.random() * 2,
+      ci: Math.floor(Math.random() * CHARS.length)
+    };
+  }
+
+  var stars = [];
+  var dpr = 1, W, H, frame = 0;
+
+  function resize() {
+    dpr = window.devicePixelRatio || 1;
+    W = window.innerWidth;
+    H = window.innerHeight;
+    canvas.width = W * dpr;
+    canvas.height = H * dpr;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    if (stars.length === 0) {
+      for (var i = 0; i < STAR_COUNT; i++) stars.push(makeStar(W, H, false));
+    }
+  }
+
+  function draw() {
+    frame++;
+    ctx.fillStyle = 'rgba(5,5,16,0.12)';
+    ctx.fillRect(0, 0, W, H);
+
+    var cx = W / 2, cy = H / 2;
+    var pulse = 0.6 + 0.4 * Math.sin(frame * 0.002);
+    var g = ctx.createRadialGradient(cx, cy, 0, cx, cy, 120 * pulse);
+    g.addColorStop(0, 'rgba(0,255,65,' + (0.04 * pulse) + ')');
+    g.addColorStop(0.5, 'rgba(0,255,65,' + (0.015 * pulse) + ')');
+    g.addColorStop(1, 'rgba(0,255,65,0)');
+    ctx.fillStyle = g;
+    ctx.fillRect(cx - 180, cy - 180, 360, 360);
+
+    for (var i = 0; i < stars.length; i++) {
+      var s = stars[i];
+      s.z -= SPEED;
+      if (s.z <= 0.001) { Object.assign(s, makeStar(W, H, false)); s.z = 2; }
+      var sx = cx + (s.x / s.z) * 0.5;
+      var sy = cy + (s.y / s.z) * 0.5;
+      if (sx < -20 || sx > W + 20 || sy < -20 || sy > H + 20) {
+        Object.assign(s, makeStar(W, H, false)); s.z = 2; continue;
+      }
+      var p = 1 - s.z / 2;
+      var sz = Math.max(6, Math.min(20, p * 22));
+      ctx.globalAlpha = Math.min(1, p * 1.5);
+      ctx.drawImage(atlas, s.ci * ATLAS_CELL, 0, ATLAS_CELL, ATLAS_CELL, sx - sz / 2, sy - sz / 2, sz, sz);
+    }
+    ctx.globalAlpha = 1;
+    requestAnimationFrame(draw);
+  }
+
+  window.addEventListener('resize', resize);
+  resize();
+  ctx.fillStyle = BG;
+  ctx.fillRect(0, 0, W, H);
+  requestAnimationFrame(draw);
+})();
+
+fetch('/api/pageview', { method: 'POST' }).catch(function(){});
 </script>
 </body>
 </html>
