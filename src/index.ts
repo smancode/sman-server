@@ -15,6 +15,7 @@ import { createAdminRouter } from './routes/admin.js';
 import { createRoomsRouter } from './routes/rooms.js';
 import { createTasksRouter } from './routes/tasks.js';
 import { createHubApiRouter } from './routes/hub-api.js';
+import { SkillScheduler } from './skill-scheduler.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PORT = parseInt(process.env.PORT || '5882', 10);
@@ -123,6 +124,21 @@ const wsHub = new WsHub(server, roomDB, PSK, taskEngine);
 // Hub API routes — registered after wsHub creation, before SPA fallback
 app.use('/api/hub', createHubApiRouter(roomDB, taskDB, PSK, taskEngine, db, wsHub));
 
+// Skill auto-updater scheduler — dispatches at 03:03 daily
+const skillScheduler = new SkillScheduler({ roomDB, taskDB, taskEngine, wsHub });
+skillScheduler.start();
+
+// Admin: manual trigger for skill scheduler
+app.post('/admin/skill-scheduler/trigger', (req: Request, res: Response) => {
+  const auth = req.headers.authorization;
+  if (auth !== `Bearer ${ADMIN_TOKEN}`) {
+    res.status(401).json({ error: 'Unauthorized' });
+    return;
+  }
+  const result = skillScheduler.triggerNow();
+  res.json({ ok: true, ...result });
+});
+
 // Public static pages (no auth, accessible from LAN)
 app.use('/pages', express.static(pagesDir));
 
@@ -140,6 +156,7 @@ if (fs.existsSync(path.join(publicDir, 'index.html'))) {
 }
 
 process.on('SIGTERM', () => {
+  skillScheduler.stop();
   wsHub.close();
   server.close(() => {
     taskDB.close();
@@ -150,6 +167,7 @@ process.on('SIGTERM', () => {
 });
 
 process.on('SIGINT', () => {
+  skillScheduler.stop();
   wsHub.close();
   server.close(() => {
     taskDB.close();

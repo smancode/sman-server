@@ -255,6 +255,12 @@ export class RoomDB {
     ).all(cutoff) as AgentRecord[];
   }
 
+  getOnlineAgents(): AgentRecord[] {
+    return this.db.prepare(
+      "SELECT * FROM agents WHERE status = 'online' ORDER BY last_heartbeat DESC"
+    ).all() as AgentRecord[];
+  }
+
   markAgentsOffline(agentIds: string[]): void {
     if (agentIds.length === 0) return;
     const placeholders = agentIds.map(() => '?').join(',');
