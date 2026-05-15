@@ -3,8 +3,17 @@ set -euo pipefail
 
 # ── 配置 ──
 STAGING_DIR="staging2/sman-server"
-DEPLOY_UPDATE_URL="http://TARGET_HOST:PORT/updates/sman"
-DEPLOY_HUB_URL="http://TARGET_HOST:PORT"
+CONF_FILE="deploy-private/pack.conf"
+if [ ! -f "$CONF_FILE" ]; then
+  echo "ERROR: $CONF_FILE not found"
+  echo "Create it with:"
+  echo "  SMAN_UPDATE_URL=http://host:port/updates/sman"
+  echo "  SMAN_HUB_URL=http://host:port"
+  exit 1
+fi
+source "$CONF_FILE"
+DEPLOY_UPDATE_URL="$SMAN_UPDATE_URL"
+DEPLOY_HUB_URL="$SMAN_HUB_URL"
 
 # ── 版本号: 26.MMDD.HH ──
 VERSION="26.$(date +%-m%d).$(date +%H)"
@@ -39,13 +48,13 @@ cp .env.example "$STAGING_DIR/"
 cp package.json "$STAGING_DIR/"
 
 # start.sh
-cat > "$STAGING_DIR/start.sh" << 'STARTSH'
+cat > "$STAGING_DIR/start.sh" << STARTSH
 #!/bin/bash
-SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-cd "$SCRIPT_DIR"
+SCRIPT_DIR="\$(cd "\$(dirname "\$0")" && pwd)"
+cd "\$SCRIPT_DIR"
 
-export SMAN_UPDATE_URL=http://TARGET_HOST:PORT/updates/sman
-export SMAN_HUB_URL=http://TARGET_HOST:PORT
+export SMAN_UPDATE_URL=$DEPLOY_UPDATE_URL
+export SMAN_HUB_URL=$DEPLOY_HUB_URL
 
 ./node.exe dist/index.js
 STARTSH

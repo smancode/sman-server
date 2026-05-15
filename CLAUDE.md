@@ -87,15 +87,13 @@ git pull && bash pack.sh
 
 ### 一键部署到 smancode.com
 
+部署脚本在 `deploy-private/` 目录中（已 gitignore，包含服务器地址、SSH 密钥等敏感信息）。
+
 ```bash
-bash deploy-smancode.sh
+bash deploy-private/deploy-smancode.sh
 ```
 
-`deploy-smancode.sh` 自动完成：构建 → SCP 上传 dist/ 和 package.json → 服务器 npm install --prod → systemctl restart sman-server → health check。
-
-SSH 密钥在 `SSH_KEY_PATH`（已 gitignore）。服务器 `SERVER_IP`，app 用户运行 sman-server，root 用户重启 systemd。
-
-线上地址：`https://www.smancode.com/server/`
+如果需要部署，先读取 `deploy-private/` 目录下的脚本了解部署流程和服务器信息，再执行。通过 `ssh h5`（app 用户）和 `ssh h5-root`（root 用户）连接服务器，这些别名定义在本地 `~/.ssh/config` 中。
 
 ### 手动打包步骤（备用）
 
@@ -114,10 +112,8 @@ rm -rf node_modules && pnpm install
 # 4. 安装 web 依赖（需要 x64 的 rollup）
 cd web && rm -rf node_modules && pnpm install && pnpm add -D @rollup/rollup-win32-x64-msvc && cd ..
 
-# 5. 构建（带部署环境变量）
-SMAN_UPDATE_URL=http://TARGET_HOST:PORT/updates/sman \
-SMAN_HUB_URL=http://TARGET_HOST:PORT \
-pnpm build
+# 5. 构建（设置目标环境变量）
+SMAN_UPDATE_URL=<目标更新URL> SMAN_HUB_URL=<目标Hub URL> pnpm build
 
 # 6. 准备打包目录
 mkdir -p staging2/sman-server
