@@ -35,12 +35,12 @@ export const api = {
   },
   publish: (token: string, data: { version: string; url: string; filename?: string; sha512?: string; size?: number; releaseNotes?: string }) =>
     request('/publish', token, { method: 'POST', body: JSON.stringify(data) }),
-  getLatestYml: async (token: string): Promise<string> => {
+  getLatestYml: async (token: string): Promise<{ win?: string; mac?: string }> => {
     const res = await fetch(`${BASE}/latest-yml`, {
       headers: { Authorization: `Bearer ${token}` },
     });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    return res.text();
+    return res.json();
   },
   getRooms: (token: string) => request('/rooms', token),
   deleteRoom: (token: string, roomId: string) =>

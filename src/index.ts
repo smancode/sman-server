@@ -104,8 +104,42 @@ function handleDownload(req: Request<{ filename: string }>, res: Response) {
   res.status(404).send('Not found');
 }
 
+// Friendly download routes — redirect to actual file based on yml
+// MUST be registered before the wildcard /download/:filename route
+function makeFriendlyDownloadRoute(ymlName: string) {
+  return (_req: Request, res: Response) => {
+    try {
+      const ymlPath = path.join(updatesDir, ymlName);
+      const yml = fs.readFileSync(ymlPath, 'utf-8');
+      // Try "url: <filename>" in files section, fallback to top-level "path:"
+      let fileMatch = yml.match(/^\s*-\s*url:\s*(.+)$/m);
+      let filename = fileMatch?.[1]?.trim();
+      if (!filename) {
+        const pathMatch = yml.match(/^path:\s*(.+)$/m);
+        filename = pathMatch?.[1]?.trim();
+      }
+      if (!filename) {
+        res.status(404).send('Installer filename not found in yml');
+        return;
+      }
+      // If url is a full URL (external), redirect directly
+      if (/^https?:\/\//.test(filename)) {
+        res.redirect(302, filename);
+        return;
+      }
+      res.redirect(302, `/download/${filename}`);
+    } catch {
+      res.status(404).send(`${ymlName} not found`);
+    }
+  };
+}
+
+app.get('/download/windows-x64', makeFriendlyDownloadRoute('latest.yml'));
+app.get('/download/macos-arm', makeFriendlyDownloadRoute('latest-mac.yml'));
+
 app.get('/updates/sman/:filename', handleDownload);
 app.get('/download/:filename', handleDownload);
+
 app.use('/updates', (_req, res) => res.status(404).send('Not found'));
 
 app.use('/api', createReportRouter(db, PSK, (clientId) => skillScheduler.getCommands(clientId)));

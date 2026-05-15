@@ -76,8 +76,8 @@ export function createAdminRouter(db: HubDB, adminToken: string, updatesDir: str
         size: data.length,
       };
 
-      // Auto-generate latest.yml for installer uploads (.exe/.dmg)
-      // Extract version from filename, e.g. "Sman-Setup-26.508.16.exe" → "26.508.16"
+      // Auto-generate yml for installer uploads (.exe/.dmg)
+      // .exe → latest.yml (Windows), .dmg → latest-mac.yml (macOS)
       if (['.exe', '.dmg'].includes(ext)) {
         const versionMatch = basename.match(/(\d+\.\d+\.\d+)/);
         if (versionMatch) {
@@ -93,18 +93,22 @@ export function createAdminRouter(db: HubDB, adminToken: string, updatesDir: str
             `releaseDate: '${date}'`,
             releaseNotes ? `releaseNotes: '${releaseNotes.replace(/'/g, "''")}'` : null,
           ].filter(Boolean).join('\n') + '\n';
-          fs.writeFileSync(path.join(updatesDir, 'latest.yml'), yml, 'utf-8');
+          const ymlName = ext === '.dmg' ? 'latest-mac.yml' : 'latest.yml';
+          fs.writeFileSync(path.join(updatesDir, ymlName), yml, 'utf-8');
           result.yml = yml;
+          result.ymlName = ymlName;
           result.sha512 = sha512;
           result.version = version;
 
-          // Auto-update nginx download link and landing page version
-          const scriptPath = path.resolve(process.cwd(), 'update-download-links.sh');
-          if (fs.existsSync(scriptPath)) {
-            execFile('sudo', [scriptPath, version, basename], { timeout: 5000 }, (err, stdout) => {
-              if (err) console.error('[upload] update-download-links.sh failed:', err.message);
-              else console.log('[upload] download links updated:', stdout.trim());
-            });
+          // Auto-update nginx download link and landing page version (Windows only)
+          if (ext === '.exe') {
+            const scriptPath = path.resolve(process.cwd(), 'update-download-links.sh');
+            if (fs.existsSync(scriptPath)) {
+              execFile('sudo', [scriptPath, version, basename], { timeout: 5000 }, (err, stdout) => {
+                if (err) console.error('[upload] update-download-links.sh failed:', err.message);
+                else console.log('[upload] download links updated:', stdout.trim());
+              });
+            }
           }
         }
       }
@@ -160,13 +164,14 @@ export function createAdminRouter(db: HubDB, adminToken: string, updatesDir: str
   });
 
   router.get('/latest-yml', (_req: Request, res: Response) => {
-    const ymlPath = path.join(updatesDir, 'latest.yml');
-    try {
-      const content = fs.readFileSync(ymlPath, 'utf-8');
-      res.type('text/plain').send(content);
-    } catch {
-      res.status(404).send('latest.yml not found');
+    const result: { win?: string; mac?: string } = {};
+    try { result.win = fs.readFileSync(path.join(updatesDir, 'latest.yml'), 'utf-8'); } catch { /* no win yml */ }
+    try { result.mac = fs.readFileSync(path.join(updatesDir, 'latest-mac.yml'), 'utf-8'); } catch { /* no mac yml */ }
+    if (!result.win && !result.mac) {
+      res.status(404).json({ error: 'No yml found' });
+      return;
     }
+    res.json(result);
   });
 
   // Stardom dev-mode toggle

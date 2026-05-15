@@ -19,10 +19,14 @@ export function UploadTab() {
   const [fileSize, setFileSize] = useState('');
   const [releaseNotes, setReleaseNotes] = useState('');
   const [publishing, setPublishing] = useState(false);
-  const [ymlPreview, setYmlPreview] = useState('');
+  const [ymlWin, setYmlWin] = useState('');
+  const [ymlMac, setYmlMac] = useState('');
 
   useEffect(() => {
-    api.getLatestYml(token).then(setYmlPreview).catch(() => {});
+    api.getLatestYml(token).then((r) => {
+      if (r.win) setYmlWin(r.win);
+      if (r.mac) setYmlMac(r.mac);
+    }).catch(() => {});
   }, [token]);
 
   const handleUpload = async (e: React.FormEvent) => {
@@ -39,7 +43,7 @@ export function UploadTab() {
     setError('');
     setMessage('');
     try {
-      const result = await api.uploadFile(token, file.name, file) as { ok: boolean; path: string; yml?: string; sha512?: string; version?: string; size: number };
+      const result = await api.uploadFile(token, file.name, file) as { ok: boolean; path: string; yml?: string; ymlName?: string; sha512?: string; version?: string; size: number };
       if (result.yml) {
         setMessage(t('upload.uploadedWithYml', {
           path: result.path,
@@ -47,7 +51,11 @@ export function UploadTab() {
           version: result.version || '',
           sha512: result.sha512?.substring(0, 16) || '',
         }));
-        setYmlPreview(result.yml);
+        if (result.ymlName === 'latest-mac.yml') {
+          setYmlMac(result.yml);
+        } else {
+          setYmlWin(result.yml);
+        }
       } else {
         setMessage(t('upload.uploaded', { path: result.path, size: String(result.size) }));
       }
@@ -75,7 +83,7 @@ export function UploadTab() {
         releaseNotes: releaseNotes.trim() || undefined,
       }) as { ok: boolean; path: string; yml: string };
       setMessage(t('upload.published', { path: result.path, version }));
-      if (result.yml) setYmlPreview(result.yml);
+      if (result.yml) setYmlWin(result.yml);
     } catch (err) {
       setError(err instanceof Error ? err.message : t('upload.publishFailed'));
     } finally {
@@ -142,10 +150,21 @@ export function UploadTab() {
       {message && <p className="success">{message}</p>}
       {error && <p className="error">{error}</p>}
 
-      {ymlPreview && (
+      {(ymlWin || ymlMac) && (
         <div className="form-section">
           <h3>{t('upload.currentYml')}</h3>
-          <pre className="yml-preview">{ymlPreview}</pre>
+          {ymlWin && (
+            <>
+              <h4 style={{ margin: '12px 0 6px', fontSize: '14px', color: '#aaa' }}>Windows (latest.yml)</h4>
+              <pre className="yml-preview">{ymlWin}</pre>
+            </>
+          )}
+          {ymlMac && (
+            <>
+              <h4 style={{ margin: '12px 0 6px', fontSize: '14px', color: '#aaa' }}>macOS (latest-mac.yml)</h4>
+              <pre className="yml-preview">{ymlMac}</pre>
+            </>
+          )}
         </div>
       )}
     </div>
