@@ -61,7 +61,12 @@ export function App() {
       <aside className="sidebar">
         <div className="sidebar-header">
           <div className="sidebar-logo">
-            sman <span>admin</span>
+            <img
+              src={theme === 'dark' ? '/sman-logo-full-white.png' : '/sman-logo-full-dark.png'}
+              alt="sman"
+              className="sidebar-logo-img"
+            />
+            <span>admin</span>
           </div>
         </div>
         <div className="sidebar-divider" />
