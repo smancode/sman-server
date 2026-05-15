@@ -152,17 +152,21 @@ body {
 }
 
 .sidebar-logo {
-  font-size: 15px;
-  font-weight: 600;
-  color: var(--sidebar-text-active);
-  letter-spacing: -0.01em;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.sidebar-logo-img {
+  height: 20px;
+  width: auto;
+  object-fit: contain;
 }
 
 .sidebar-logo span {
   color: var(--text3);
   font-weight: 400;
   font-size: 12px;
-  margin-left: 6px;
 }
 
 .sidebar-divider {
