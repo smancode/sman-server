@@ -154,19 +154,12 @@ body {
 .sidebar-logo {
   display: flex;
   align-items: center;
-  gap: 6px;
 }
 
 .sidebar-logo-img {
   height: 20px;
   width: auto;
   object-fit: contain;
-}
-
-.sidebar-logo span {
-  color: var(--text3);
-  font-weight: 400;
-  font-size: 12px;
 }
 
 .sidebar-divider {

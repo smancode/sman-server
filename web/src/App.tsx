@@ -66,7 +66,6 @@ export function App() {
               alt="sman"
               className="sidebar-logo-img"
             />
-            <span>admin</span>
           </div>
         </div>
         <div className="sidebar-divider" />
