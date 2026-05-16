@@ -36,16 +36,6 @@ function loadPsk(): string {
 
 const PSK = loadPsk();
 
-function localhostOnly(req: Request, res: Response, next: NextFunction): void {
-  const ip = req.ip ?? req.socket.remoteAddress ?? '';
-  if (ip === '127.0.0.1' || ip === '::1' || ip === '::ffff:127.0.0.1') {
-    next();
-    return;
-  }
-  res.status(403).send('Forbidden');
-}
-
-
 if (!ADMIN_TOKEN) {
   console.error('ERROR: ADMIN_TOKEN must be set in .env');
   process.exit(1);
