@@ -144,7 +144,8 @@ app.use('/updates', (_req, res) => res.status(404).send('Not found'));
 
 app.use('/api', createReportRouter(db, PSK, (clientId) => skillScheduler.getCommands(clientId)));
 app.use('/api', createBroadcastRouter(db, PSK));
-app.get('/health', (_req, res) => res.json({ ok: true }));
+app.route('/health').get((_req, res) => res.json({ ok: true })).head((_req, res) => res.status(200).end());
+app.route('/api/health').get((_req, res) => res.json({ ok: true })).head((_req, res) => res.status(200).end());
 
 // Public page view tracking (no auth)
 app.post('/api/pageview', (req, res) => {
