@@ -3,7 +3,7 @@ import { api } from '../api';
 import { t, useLocale } from '../locales';
 import { useAuthStore } from '../stores/auth';
 
-const ALLOWED_EXTS = ['.yml', '.dmg', '.exe', '.blockmap'];
+const ALLOWED_EXTS = ['.yml', '.dmg', '.exe', '.blockmap', '.zip'];
 
 export function UploadTab() {
   const token = useAuthStore((s) => s.token);
@@ -138,7 +138,7 @@ export function UploadTab() {
           <p className="hint">{t('upload.uploadHint')}</p>
           <input
             type="file"
-            accept=".yml,.dmg,.exe,.blockmap"
+            accept=".yml,.dmg,.exe,.blockmap,.zip"
             onChange={e => setFile(e.target.files?.[0] || null)}
           />
           <button className="btn-primary" type="submit" disabled={!file || uploading}>

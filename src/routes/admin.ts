@@ -61,7 +61,7 @@ export function createAdminRouter(db: HubDB, adminToken: string, updatesDir: str
         return;
       }
       const ext = path.extname(filename).toLowerCase();
-      if (!['.yml', '.dmg', '.exe', '.blockmap'].includes(ext)) {
+      if (!['.yml', '.dmg', '.exe', '.blockmap', '.zip'].includes(ext)) {
         res.status(400).json({ error: 'Unsupported file type' });
         return;
       }
@@ -76,9 +76,9 @@ export function createAdminRouter(db: HubDB, adminToken: string, updatesDir: str
         size: data.length,
       };
 
-      // Auto-generate yml for installer uploads (.exe/.dmg)
-      // .exe → latest.yml (Windows), .dmg → latest-mac.yml (macOS)
-      if (['.exe', '.dmg'].includes(ext)) {
+      // Auto-generate yml for installer uploads
+      // .exe → latest.yml (Windows), .dmg/.zip → latest-mac.yml (macOS)
+      if (['.exe', '.dmg', '.zip'].includes(ext)) {
         const versionMatch = basename.match(/(\d+\.\d+\.\d+)/);
         if (versionMatch) {
           const version = versionMatch[1];
@@ -93,7 +93,7 @@ export function createAdminRouter(db: HubDB, adminToken: string, updatesDir: str
             `releaseDate: '${date}'`,
             releaseNotes ? `releaseNotes: '${releaseNotes.replace(/'/g, "''")}'` : null,
           ].filter(Boolean).join('\n') + '\n';
-          const ymlName = ext === '.dmg' ? 'latest-mac.yml' : 'latest.yml';
+          const ymlName = ['.dmg', '.zip'].includes(ext) ? 'latest-mac.yml' : 'latest.yml';
           fs.writeFileSync(path.join(updatesDir, ymlName), yml, 'utf-8');
           result.yml = yml;
           result.ymlName = ymlName;
