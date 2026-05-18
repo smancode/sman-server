@@ -129,9 +129,12 @@ app.get('/download/macos-arm', (_req: Request, res: Response) => {
   // Prefer DMG for user downloads, fall back to yml (which points to zip for electron-updater)
   try {
     const files = fs.readdirSync(updatesDir);
-    const dmg = files.find(f => f.endsWith('.dmg'));
-    if (dmg) {
-      res.redirect(302, `/download/${dmg}`);
+    const dmgs = files.filter(f => f.endsWith('.dmg'));
+    if (dmgs.length > 0) {
+      // Sort by modification time descending, pick the latest
+      const sorted = dmgs.map(f => ({ f, mtime: fs.statSync(path.join(updatesDir, f)).mtime }))
+        .sort((a, b) => b.mtime.getTime() - a.mtime.getTime());
+      res.redirect(302, `/download/${sorted[0].f}`);
       return;
     }
   } catch { /* no dmg */ }
