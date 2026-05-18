@@ -125,7 +125,18 @@ function makeFriendlyDownloadRoute(ymlName: string) {
 }
 
 app.get('/download/windows-x64', makeFriendlyDownloadRoute('latest.yml'));
-app.get('/download/macos-arm', makeFriendlyDownloadRoute('latest-mac.yml'));
+app.get('/download/macos-arm', (_req: Request, res: Response) => {
+  // Prefer DMG for user downloads, fall back to yml (which points to zip for electron-updater)
+  try {
+    const files = fs.readdirSync(updatesDir);
+    const dmg = files.find(f => f.endsWith('.dmg'));
+    if (dmg) {
+      res.redirect(302, `/download/${dmg}`);
+      return;
+    }
+  } catch { /* no dmg */ }
+  makeFriendlyDownloadRoute('latest-mac.yml')(_req, res);
+});
 
 app.get('/updates/sman/:filename', handleDownload);
 app.get('/download/:filename', handleDownload);
