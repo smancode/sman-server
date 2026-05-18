@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>Sman - AI原生与Agent协作平台</title>
+<title>Sman-硅基人</title>
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
   body {
@@ -66,14 +66,27 @@
     max-width: 780px;
     width: 85vw;
   }
+  .logo-row {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    margin-bottom: 4px;
+  }
   .logo {
     height: 40px;
-    margin-bottom: 4px;
     object-fit: contain;
   }
+  .logo-text {
+    font-size: 28px;
+    font-weight: 700;
+    color: #e0e0e0;
+    letter-spacing: 2px;
+    white-space: nowrap;
+  }
   .tagline {
-    font-size: 13px;
-    color: rgba(255,255,255,0.4);
+    font-size: 18px;
+    color: rgba(255,255,255,0.75);
     margin-bottom: 24px;
     letter-spacing: 1px;
   }
@@ -172,7 +185,10 @@
 </div>
 
 <div class="center-card">
-  <img class="logo" src="sman-logo-full-white.png" alt="Sman" />
+  <div class="logo-row">
+    <img class="logo" src="sman-logo-full-white.png" alt="Sman" />
+    <span class="logo-text" data-i18n="logoText">硅基人</span>
+  </div>
   <div class="tagline" data-i18n="tagline">从AI助理到AI同事</div>
 
   <div class="cards-row">
@@ -214,8 +230,9 @@
 (function() {
   var i18n = {
     zh: {
-      title: 'Sman - AI原生与Agent协作平台',
-      tagline: '从AI助理到AI同事',
+      title: 'Sman-硅基人',
+      tagline: 'AI Agent协作与算力平台',
+      logoText: '硅基人',
       starBtn: 'Star on GitHub',
       starDesc: 'Give us a star!<br/>开源免费，持续更新',
       dlBtn: 'Download Windows',
@@ -225,8 +242,9 @@
       qrDesc: '扫码加入微信群<br/>交流反馈、获取帮助'
     },
     en: {
-      title: 'Sman - AI-Native Agent Collaboration Platform',
-      tagline: 'From AI Assistant to AI Colleague',
+      title: 'Sman-SiliconMan',
+      tagline: 'AI Agent Collaboration & Computing Platform',
+      logoText: 'SiliconMan',
       starBtn: 'Star on GitHub',
       starDesc: 'Give us a star!<br/>Open source, free, always improving',
       dlBtn: 'Download Windows',
