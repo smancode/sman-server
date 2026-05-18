@@ -8,6 +8,7 @@ const ALLOWED_EXTS = ['.yml', '.dmg', '.exe', '.blockmap', '.zip'];
 export function UploadTab() {
   const token = useAuthStore((s) => s.token);
   const [file, setFile] = useState<File | null>(null);
+  const [uploadNotes, setUploadNotes] = useState('');
   const [uploading, setUploading] = useState(false);
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
@@ -43,7 +44,9 @@ export function UploadTab() {
     setError('');
     setMessage('');
     try {
-      const result = await api.uploadFile(token, file.name, file) as { ok: boolean; path: string; yml?: string; ymlName?: string; sha512?: string; version?: string; size: number };
+      const result = await api.uploadFile(token, file.name, file, {
+        releaseNotes: uploadNotes.trim() || undefined,
+      }) as { ok: boolean; path: string; yml?: string; ymlName?: string; sha512?: string; version?: string; size: number };
       if (result.yml) {
         setMessage(t('upload.uploadedWithYml', {
           path: result.path,
@@ -140,6 +143,12 @@ export function UploadTab() {
             type="file"
             accept=".yml,.dmg,.exe,.blockmap,.zip"
             onChange={e => setFile(e.target.files?.[0] || null)}
+          />
+          <textarea
+            placeholder={t('upload.notesPlaceholder')}
+            value={uploadNotes}
+            onChange={e => setUploadNotes(e.target.value)}
+            rows={4}
           />
           <button className="btn-primary" type="submit" disabled={!file || uploading}>
             {uploading ? t('upload.uploading') : t('upload.upload')}
