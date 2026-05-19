@@ -56,6 +56,9 @@ export const api = {
   getErrorReports: (token: string) => request('/error-reports', token),
   deleteErrorReport: (token: string, id: number) =>
     request(`/error-reports/${id}`, token, { method: 'DELETE' }),
+  getFeedbacks: (token: string) => request('/feedbacks', token),
+  deleteFeedback: (token: string, id: number) =>
+    request(`/feedbacks/${id}`, token, { method: 'DELETE' }),
   getPageViews: (token: string, days = 30) =>
     request(`/pageviews?days=${days}`, token),
   getPageViewIps: (token: string, days = 30) =>

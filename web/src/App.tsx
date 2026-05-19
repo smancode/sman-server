@@ -10,12 +10,13 @@ import { RoomsTab } from './components/RoomsTab';
 import { AgentsTab } from './components/AgentsTab';
 import { TasksTab } from './components/TasksTab';
 import { ErrorsTab } from './components/ErrorsTab';
+import { FeedbacksTab } from './components/FeedbacksTab';
 import { AnalyticsTab } from './components/AnalyticsTab';
 import { SkillSchedulerTab } from './components/SkillSchedulerTab';
 import { useAuthStore } from './stores/auth';
 import { useThemeStore } from './stores/theme';
 
-type Tab = 'dashboard' | 'clients' | 'broadcasts' | 'upload' | 'analytics' | 'errors' | 'rooms' | 'agents' | 'tasks' | 'skillScheduler';
+type Tab = 'dashboard' | 'clients' | 'broadcasts' | 'upload' | 'analytics' | 'errors' | 'feedbacks' | 'rooms' | 'agents' | 'tasks' | 'skillScheduler';
 
 const NAV_ITEMS: { key: Tab; labelKey: string; group: string }[] = [
   { key: 'dashboard', labelKey: 'tab.dashboard', group: 'overview' },
@@ -24,6 +25,7 @@ const NAV_ITEMS: { key: Tab; labelKey: string; group: string }[] = [
   { key: 'upload', labelKey: 'tab.upload', group: 'overview' },
   { key: 'analytics', labelKey: 'tab.analytics', group: 'overview' },
   { key: 'errors', labelKey: 'tab.errors', group: 'overview' },
+  { key: 'feedbacks', labelKey: 'tab.feedbacks', group: 'overview' },
   { key: 'rooms', labelKey: 'tab.rooms', group: 'hub' },
   { key: 'agents', labelKey: 'tab.agents', group: 'hub' },
   { key: 'tasks', labelKey: 'tab.tasks', group: 'hub' },
@@ -119,6 +121,7 @@ export function App() {
           {tab === 'agents' && <AgentsTab />}
           {tab === 'tasks' && <TasksTab />}
           {tab === 'errors' && <ErrorsTab />}
+          {tab === 'feedbacks' && <FeedbacksTab />}
           {tab === 'skillScheduler' && <SkillSchedulerTab />}
         </div>
       </main>
