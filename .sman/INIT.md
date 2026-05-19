@@ -5,11 +5,11 @@ initializedAt: "2026-05-19T01:25:17.622Z"
 
 # Project Init
 
-**Type:** node, empty
-**Tech Stack:** Express 5, better-sqlite3, React 19, Vite, TypeScript, Vitest, AES-256-GCM encryption, pnpm
-**Summary:** Sman-server is an encrypted telemetry and update management hub for the Sman desktop application.
-**Description:** Sman-server collects AES-256-GCM encrypted usage reports from remote Sman desktop clients, manages broadcast notifications with read tracking, serves application updates, and provides a React-based admin dashboard. It uses Express 5 with raw SQLite (better-sqlite3, WAL mode, no ORM) for storage, and packages as a self-contained Windows x64 zip with bundled node.exe for deployment to smancode.com.
-**Files:** 0
+**Type:** node, fullstack
+**Tech Stack:** Express 5, better-sqlite3 (raw SQLite, WAL mode, no ORM), React 19, Vite, TypeScript, Vitest, AES-256-GCM encryption, pnpm
+**Summary:** Sman-server is an encrypted telemetry and update management hub for the Sman desktop application, featuring AES-256-GCM encrypted client communication, broadcast notification system with read tracking, and a React-based admin dashboard.
+**Description:** Sman-server serves as the central management platform for Sman desktop clients, collecting encrypted usage reports via AES-256-GCM, managing broadcast notifications with many-to-many read tracking, serving application updates, and providing a React 19 admin dashboard. It uses Express 5 with better-sqlite3 (WAL mode, raw SQL without ORM) for storage, packages as a self-contained Windows x64 zip with bundled node.exe, and deploys to smancode.com.
+**Files:** 41
 **Git:** yes
 **CLAUDE.md:** existing
 

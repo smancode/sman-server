@@ -1,14 +1,19 @@
 ---
 name: project-external-calls
-description: |
-  外部依赖知识（待首次扫描）。包含项目对外部系统（HTTP 服务、数据库、消息队列）的调用。
-  尚未扫描时此文件为占位符，运行 skill-auto-updater 后自动生成实际内容。
+description: External dependency knowledge for sman-server. Contains local system calls (database, file system, crypto) with call methods, config sources, and usage locations.
 _scanned:
-  commitHash: null
-  scannedAt: null
-  branch: null
+  commitHash: 6a87529d7c30fef9a812f0d1b6bbfa87c5870fed
+  scannedAt: 2026-05-20T03:04:00Z
+  branch: master
 ---
 
-# Project External Calls
+# External Dependencies
 
-> 待扫描。此 skill 将在 skill-auto-updater 首次执行后自动填充外部依赖信息。
+## Local System Services
+
+| Service | Type | Purpose | Reference |
+|---------|------|---------|-----------|
+| better-sqlite3 | SQLite Database | Persistent storage for clients, reports, broadcasts, settings, error reports, feedback, analytics | [better-sqlite3.md](references/better-sqlite3.md) |
+| node:crypto | Cryptographic Operations | AES-256-GCM encryption/decryption for client communication | [node-crypto.md](references/node-crypto.md) |
+| node:fs | File System | Update file serving, redirect mappings, static pages, PSK loading | [node-fs.md](references/node-fs.md) |
+| ws (WebSocket) | Real-time Communication | Desktop client connections, room subscriptions, task broadcasts | [ws-websocket.md](references/ws-websocket.md) |

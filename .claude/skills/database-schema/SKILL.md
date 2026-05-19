@@ -1,16 +1,54 @@
 ---
 name: database-schema
-description: |
-  数据库全景知识（待首次扫描）。包含核心表结构、关联关系、索引策略。
-  尚未扫描时此文件为占位符，运行 skill-auto-updater 后自动生成实际内容。
-_scanned:
-  commitHash: null
-  scannedAt: null
-  branch: null
+description: Database schema knowledge for sman-server: table structures, relationships, indexes, and DDL
+commitHash: 6a87529d7c30fef9a812f0d1b6bbfa87c5870fed
+scannedAt: 2026-05-20T03:04:00Z
+branch: master
 ---
 
-# Database Schema
+# Sman-Server Database Schema
 
-> 待扫描。此 skill 将在 skill-auto-updater 首次执行后自动填充数据库结构信息。
+## Database Overview
+- **Engine**: better-sqlite3 (synchronous Node.js bindings)
+- **Mode**: WAL (Write-Ahead Logging) for concurrency
+- **Location**: `data/hub.db` (created on startup if missing)
+- **Architecture**: No ORM, raw SQL with prepared statements
+- **Total Tables**: 13 tables
 
-（无数据库的项目将跳过此 skill）
+## Core Tables
+
+### clients
+Client device records with version, hostname, IP, and activity tracking.
+
+### reports
+Time-series usage reports linked to clients (foreign key).
+
+### broadcasts
+Broadcast notifications with soft-delete flag.
+
+### read_log
+Many-to-many junction table tracking which broadcasts each client has read.
+
+### hub_settings
+Key-value configuration storage (e.g., stardom_dev_mode flag).
+
+### error_reports
+Error tracking with session context, workspace, and LLM metadata.
+
+### feedback
+User feedback submissions with workspace and LLM context.
+
+### page_views
+Daily pageview aggregation by date.
+
+### page_view_logs
+Raw pageview logs with IP and timestamp.
+
+### download_logs
+Download tracking with IP, filename, and version extraction.
+
+### client_workspaces
+Many-to-many relationship between clients and their workspace paths.
+
+## References
+See `references/` directory for detailed table documentation.
