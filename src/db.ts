@@ -128,6 +128,19 @@ export class HubDB {
       CREATE INDEX IF NOT EXISTS idx_error_reports_time ON error_reports(created_at);
       CREATE INDEX IF NOT EXISTS idx_error_reports_code ON error_reports(error_code);
 
+      CREATE TABLE IF NOT EXISTS feedback (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        client_id TEXT,
+        message TEXT NOT NULL,
+        workspace TEXT,
+        llm_model TEXT,
+        llm_base_url TEXT,
+        os_info TEXT,
+        created_at TEXT NOT NULL DEFAULT (datetime('now'))
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_feedback_time ON feedback(created_at);
+
       CREATE TABLE IF NOT EXISTS page_views (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         date TEXT NOT NULL,
@@ -407,6 +420,37 @@ export class HubDB {
       map.set(row.workspace, list);
     }
     return Array.from(map.entries()).map(([workspace, clients]) => ({ workspace, clients }));
+  }
+
+  insertFeedback(params: {
+    clientId?: string;
+    message: string;
+    workspace?: string;
+    llmModel?: string;
+    llmBaseUrl?: string;
+    osInfo?: string;
+  }): void {
+    this.db.prepare(`
+      INSERT INTO feedback (client_id, message, workspace, llm_model, llm_base_url, os_info)
+      VALUES (?, ?, ?, ?, ?, ?)
+    `).run(
+      params.clientId ?? null,
+      params.message,
+      params.workspace ?? null,
+      params.llmModel ?? null,
+      params.llmBaseUrl ?? null,
+      params.osInfo ?? null,
+    );
+  }
+
+  getFeedbacks(limit = 100): { id: number; client_id: string | null; message: string; workspace: string | null; llm_model: string | null; llm_base_url: string | null; os_info: string | null; created_at: string }[] {
+    return this.db.prepare(
+      'SELECT * FROM feedback ORDER BY created_at DESC LIMIT ?'
+    ).all(limit) as { id: number; client_id: string | null; message: string; workspace: string | null; llm_model: string | null; llm_base_url: string | null; os_info: string | null; created_at: string }[];
+  }
+
+  deleteFeedback(id: number): void {
+    this.db.prepare('DELETE FROM feedback WHERE id = ?').run(id);
   }
 
   close(): void {

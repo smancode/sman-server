@@ -6,6 +6,17 @@ import type { ReportPayload, EncryptedRequest } from '../types.js';
 
 const REPLAY_WINDOW_MS = 5 * 60 * 1000;
 
+// IP-based rate limiter for feedback endpoint
+const feedbackRateLimit = new Map<string, number>();
+const FEEDBACK_RATE_LIMIT_MS = 30_000;
+// Cleanup stale entries every 5 minutes
+setInterval(() => {
+  const now = Date.now();
+  for (const [ip, ts] of feedbackRateLimit) {
+    if (now - ts > FEEDBACK_RATE_LIMIT_MS * 2) feedbackRateLimit.delete(ip);
+  }
+}, 5 * 60 * 1000);
+
 export function createReportRouter(db: HubDB, psk: string, getSkillCommands?: (clientId: string) => string[]): Router {
   const router = Router();
 
@@ -79,6 +90,53 @@ export function createReportRouter(db: HubDB, psk: string, getSkillCommands?: (c
         rawError: data.rawError as string | undefined,
         workspace: data.workspace as string | undefined,
         lastUserMessage: data.lastUserMessage as string | undefined,
+        llmModel: data.llmModel as string | undefined,
+        llmBaseUrl: data.llmBaseUrl as string | undefined,
+        osInfo: data.osInfo as string | undefined,
+      });
+
+      res.json({ ok: true });
+    } catch {
+      res.status(400).json({ error: 'Invalid request' });
+    }
+  });
+
+  router.post('/feedback', (req: Request, res: Response) => {
+    // IP rate limit: same IP can only submit once per 30 seconds
+    const ip = req.ip || req.headers['x-forwarded-for']?.toString().split(',')[0]?.trim() || 'unknown';
+    const now = Date.now();
+    const lastTime = feedbackRateLimit.get(ip);
+    if (lastTime && now - lastTime < FEEDBACK_RATE_LIMIT_MS) {
+      res.status(429).json({ error: 'Too many requests, please try again later' });
+      return;
+    }
+    feedbackRateLimit.set(ip, now);
+
+    try {
+      const { payload, timestamp, pskVersion } = req.body as EncryptedRequest;
+
+      if (pskVersion !== 1) {
+        res.status(400).json({ error: 'Unsupported PSK version' });
+        return;
+      }
+
+      const now = Date.now();
+      if (Math.abs(now - timestamp * 1000) > REPLAY_WINDOW_MS) {
+        res.status(400).json({ error: 'Timestamp out of range' });
+        return;
+      }
+
+      const data = decrypt(payload, psk) as Record<string, unknown>;
+
+      if (!data.message || typeof data.message !== 'string' || data.message.trim().length === 0) {
+        res.status(400).json({ error: 'message is required' });
+        return;
+      }
+
+      db.insertFeedback({
+        clientId: data.clientId as string | undefined,
+        message: (data.message as string).trim(),
+        workspace: data.workspace as string | undefined,
         llmModel: data.llmModel as string | undefined,
         llmBaseUrl: data.llmBaseUrl as string | undefined,
         osInfo: data.osInfo as string | undefined,

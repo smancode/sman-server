@@ -201,6 +201,16 @@ export function createAdminRouter(db: HubDB, adminToken: string, updatesDir: str
     res.json({ ok: true });
   });
 
+  router.get('/feedbacks', (req: Request, res: Response) => {
+    const limit = Math.min(Math.max(parseInt(String(req.query.limit)) || 100, 1), 500);
+    res.json(db.getFeedbacks(limit));
+  });
+
+  router.delete('/feedbacks/:id', (req: Request, res: Response) => {
+    db.deleteFeedback(Number(req.params.id));
+    res.json({ ok: true });
+  });
+
   router.get('/pageviews', (_req: Request, res: Response) => {
     const days = Math.min(Math.max(parseInt(String(_req.query.days)) || 30, 1), 365);
     res.json({ days: db.getPageViews(days) });
