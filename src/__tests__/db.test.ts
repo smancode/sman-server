@@ -92,6 +92,62 @@ describe('HubDB', () => {
     });
   });
 
+  describe('achievement_leaderboard_log', () => {
+    it('should log on first push', () => {
+      db.upsertAchievementEntry({
+        agentId: 'agent-1', agentName: 'Alice', totalPoints: 100,
+        totalUnlocked: 5, level: 'silver', tierCounts: '{}', dimensionScores: '{}',
+      });
+      const logs = db.getAchievementLogs('agent-1');
+      expect(logs).toHaveLength(1);
+      expect(logs[0].totalPoints).toBe(100);
+      expect(logs[0].changedFields).toBe('[]'); // first push, no previous to compare
+    });
+
+    it('should not log when data is unchanged', () => {
+      const params = {
+        agentId: 'agent-1', agentName: 'Alice', totalPoints: 100,
+        totalUnlocked: 5, level: 'silver', tierCounts: '{}', dimensionScores: '{}',
+      };
+      db.upsertAchievementEntry(params);
+      db.upsertAchievementEntry(params); // same data again
+      const logs = db.getAchievementLogs('agent-1');
+      expect(logs).toHaveLength(1); // only the first push log
+    });
+
+    it('should log when fields change', () => {
+      db.upsertAchievementEntry({
+        agentId: 'agent-1', agentName: 'Alice', totalPoints: 100,
+        totalUnlocked: 5, level: 'silver', tierCounts: '{}', dimensionScores: '{}',
+      });
+      db.upsertAchievementEntry({
+        agentId: 'agent-1', agentName: 'Alice', totalPoints: 200,
+        totalUnlocked: 8, level: 'gold', tierCounts: '{}', dimensionScores: '{}',
+      });
+      const logs = db.getAchievementLogs('agent-1');
+      expect(logs).toHaveLength(2);
+      // second log should record which fields changed
+      const changed = JSON.parse(logs[1].changedFields);
+      expect(changed).toContain('total_points');
+      expect(changed).toContain('total_unlocked');
+      expect(changed).toContain('level');
+    });
+
+    it('should update main table regardless of change', () => {
+      db.upsertAchievementEntry({
+        agentId: 'agent-1', agentName: 'Alice', totalPoints: 100,
+        totalUnlocked: 5, level: 'silver', tierCounts: '{}', dimensionScores: '{}',
+      });
+      db.upsertAchievementEntry({
+        agentId: 'agent-1', agentName: 'Alice', totalPoints: 100,
+        totalUnlocked: 5, level: 'silver', tierCounts: '{}', dimensionScores: '{}',
+      });
+      const entries = db.getLeaderboard();
+      expect(entries).toHaveLength(1);
+      expect(entries[0].totalPoints).toBe(100);
+    });
+  });
+
   describe('hub_settings', () => {
     it('should return default value for stardom_dev_mode', () => {
       const val = db.getSetting('stardom_dev_mode');

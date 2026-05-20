@@ -185,6 +185,21 @@ export class HubDB {
         updated_at TEXT NOT NULL DEFAULT (datetime('now'))
       );
       CREATE INDEX IF NOT EXISTS idx_achievement_leaderboard_points ON achievement_leaderboard(total_points DESC);
+
+      CREATE TABLE IF NOT EXISTS achievement_leaderboard_log (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        agent_id TEXT NOT NULL,
+        agent_name TEXT NOT NULL,
+        total_points INTEGER NOT NULL,
+        total_unlocked INTEGER NOT NULL DEFAULT 0,
+        level TEXT NOT NULL DEFAULT 'bronze',
+        tier_counts TEXT NOT NULL DEFAULT '{}',
+        dimension_scores TEXT NOT NULL DEFAULT '{}',
+        changed_fields TEXT NOT NULL DEFAULT '[]',
+        created_at TEXT NOT NULL DEFAULT (datetime('now'))
+      );
+      CREATE INDEX IF NOT EXISTS idx_achievement_log_agent ON achievement_leaderboard_log(agent_id);
+      CREATE INDEX IF NOT EXISTS idx_achievement_log_time ON achievement_leaderboard_log(created_at);
     `);
 
     // Migration: add dimension_scores column for existing databases
@@ -477,6 +492,23 @@ export class HubDB {
 
   upsertAchievementEntry(params: { agentId: string; agentName: string; totalPoints: number; totalUnlocked: number; level: string; tierCounts: string; dimensionScores: string }): void {
     const now = new Date().toISOString();
+
+    // Check current record for diff
+    const current = this.db.prepare(
+      'SELECT agent_name, total_points, total_unlocked, level, tier_counts, dimension_scores FROM achievement_leaderboard WHERE agent_id = ?'
+    ).get(params.agentId) as { agent_name: string; total_points: number; total_unlocked: number; level: string; tier_counts: string; dimension_scores: string } | undefined;
+
+    const changedFields: string[] = [];
+    if (current) {
+      if (current.agent_name !== params.agentName) changedFields.push('agent_name');
+      if (current.total_points !== params.totalPoints) changedFields.push('total_points');
+      if (current.total_unlocked !== params.totalUnlocked) changedFields.push('total_unlocked');
+      if (current.level !== params.level) changedFields.push('level');
+      if (current.tier_counts !== params.tierCounts) changedFields.push('tier_counts');
+      if (current.dimension_scores !== params.dimensionScores) changedFields.push('dimension_scores');
+    }
+
+    // Upsert main table
     this.db.prepare(`
       INSERT INTO achievement_leaderboard (agent_id, agent_name, total_points, total_unlocked, level, tier_counts, dimension_scores, updated_at)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?)
@@ -489,6 +521,14 @@ export class HubDB {
         dimension_scores = excluded.dimension_scores,
         updated_at = excluded.updated_at
     `).run(params.agentId, params.agentName, params.totalPoints, params.totalUnlocked, params.level, params.tierCounts, params.dimensionScores, now);
+
+    // Log if changed or first time
+    if (!current || changedFields.length > 0) {
+      this.db.prepare(`
+        INSERT INTO achievement_leaderboard_log (agent_id, agent_name, total_points, total_unlocked, level, tier_counts, dimension_scores, changed_fields, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `).run(params.agentId, params.agentName, params.totalPoints, params.totalUnlocked, params.level, params.tierCounts, params.dimensionScores, JSON.stringify(changedFields), now);
+    }
   }
 
   getLeaderboard(limit = 100): { rank: number; agentName: string; totalPoints: number; totalUnlocked: number; level: string; updatedAt: string }[] {
@@ -523,6 +563,76 @@ export class HubDB {
       totalUnlocked: r.total_unlocked,
       level: r.level,
       dimensionValue: r.dim_value,
+    }));
+  }
+
+  getLeaderboardPage(params: { page: number; pageSize: number; sortBy: string; search?: string }): { entries: { rank: number; agentId: string; agentName: string; totalPoints: number; totalUnlocked: number; level: string; tierCounts: string; dimensionScores: string; updatedAt: string }[]; total: number } {
+    const { page, pageSize, sortBy, search } = params;
+    const offset = (page - 1) * pageSize;
+
+    const allowedDimensions = ['sessions', 'messages', 'tokens', 'cron_jobs', 'earth_path', 'bot_sessions', 'bot_messages', 'bot_count', 'streak'];
+    let orderBy: string;
+    if (sortBy === 'total') {
+      orderBy = 'total_points DESC, total_unlocked DESC, updated_at ASC';
+    } else if (allowedDimensions.includes(sortBy)) {
+      orderBy = `COALESCE(CAST(json_extract(dimension_scores, '$.${sortBy}') AS INTEGER), 0) DESC, total_points DESC, updated_at ASC`;
+    } else {
+      orderBy = 'total_points DESC, total_unlocked DESC, updated_at ASC';
+    }
+
+    let whereClause = '';
+    const countArgs: unknown[] = [];
+    const queryArgs: unknown[] = [];
+
+    if (search) {
+      whereClause = 'WHERE agent_name LIKE ?';
+      const pattern = `%${search}%`;
+      countArgs.push(pattern);
+      queryArgs.push(pattern);
+    }
+
+    const totalRow = this.db.prepare(`SELECT COUNT(*) as cnt FROM achievement_leaderboard ${whereClause}`).get(...countArgs) as { cnt: number };
+    const total = totalRow.cnt;
+
+    const rows = this.db.prepare(
+      `SELECT agent_id, agent_name, total_points, total_unlocked, level, tier_counts, dimension_scores, updated_at
+       FROM achievement_leaderboard ${whereClause}
+       ORDER BY ${orderBy}
+       LIMIT ? OFFSET ?`
+    ).all(...queryArgs, pageSize, offset) as { agent_id: string; agent_name: string; total_points: number; total_unlocked: number; level: string; tier_counts: string; dimension_scores: string; updated_at: string }[];
+
+    // Calculate rank based on position in full sorted list
+    const offsetRank = offset;
+    const entries = rows.map((r, i) => ({
+      rank: offsetRank + i + 1,
+      agentId: r.agent_id,
+      agentName: r.agent_name,
+      totalPoints: r.total_points,
+      totalUnlocked: r.total_unlocked,
+      level: r.level,
+      tierCounts: r.tier_counts,
+      dimensionScores: r.dimension_scores,
+      updatedAt: r.updated_at,
+    }));
+
+    return { entries, total };
+  }
+
+  getAchievementLogs(agentId: string): { id: number; agentId: string; agentName: string; totalPoints: number; totalUnlocked: number; level: string; tierCounts: string; dimensionScores: string; changedFields: string; createdAt: string }[] {
+    const rows = this.db.prepare(
+      'SELECT id, agent_id, agent_name, total_points, total_unlocked, level, tier_counts, dimension_scores, changed_fields, created_at FROM achievement_leaderboard_log WHERE agent_id = ? ORDER BY id'
+    ).all(agentId) as { id: number; agent_id: string; agent_name: string; total_points: number; total_unlocked: number; level: string; tier_counts: string; dimension_scores: string; changed_fields: string; created_at: string }[];
+    return rows.map(r => ({
+      id: r.id,
+      agentId: r.agent_id,
+      agentName: r.agent_name,
+      totalPoints: r.total_points,
+      totalUnlocked: r.total_unlocked,
+      level: r.level,
+      tierCounts: r.tier_counts,
+      dimensionScores: r.dimension_scores,
+      changedFields: r.changed_fields,
+      createdAt: r.created_at,
     }));
   }
 

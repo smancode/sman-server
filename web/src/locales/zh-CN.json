@@ -3,6 +3,7 @@
   "app.logout": { "text": "退出登录" },
 
   "sidebar.groupOverview": { "text": "总览" },
+  "sidebar.groupLeaderboard": { "text": "排行榜" },
   "sidebar.groupHub": { "text": "Hub 协作" },
 
   "tab.dashboard": { "text": "仪表盘" },
@@ -214,5 +215,28 @@
   "skillScheduler.scheduleSave": { "text": "保存" },
   "skillScheduler.scheduleSaved": { "text": "触发时间已更新" },
   "skillScheduler.scheduleFailed": { "text": "更新触发时间失败" },
-  "skillScheduler.scheduleInvalid": { "text": "时间格式无效（时 0-23，分 0-59）" }
+  "skillScheduler.scheduleInvalid": { "text": "时间格式无效（时 0-23，分 0-59）" },
+
+  "tab.leaderboard": { "text": "成就排行" },
+  "sidebar.groupLeaderboard": { "text": "排行榜" },
+  "leaderboard.title": { "text": "成就排行榜" },
+  "leaderboard.loadFailed": { "text": "加载排行榜失败" },
+  "leaderboard.noData": { "text": "暂无排行数据" },
+  "leaderboard.searchPlaceholder": { "text": "搜索用户名称..." },
+  "leaderboard.search": { "text": "搜索" },
+  "leaderboard.colName": { "text": "用户" },
+  "leaderboard.colLevel": { "text": "等级" },
+  "leaderboard.colUpdated": { "text": "更新时间" },
+  "leaderboard.dimTotal": { "text": "总分" },
+  "leaderboard.dimSessions": { "text": "会话" },
+  "leaderboard.dimMessages": { "text": "消息" },
+  "leaderboard.dimTokens": { "text": "Token" },
+  "leaderboard.dimCronJobs": { "text": "定时任务" },
+  "leaderboard.dimEarthPath": { "text": "地球路径" },
+  "leaderboard.dimBotSessions": { "text": "Bot 会话" },
+  "leaderboard.dimBotMessages": { "text": "Bot 消息" },
+  "leaderboard.dimBotCount": { "text": "Bot 数量" },
+  "leaderboard.dimStreak": { "text": "连续活跃" },
+  "leaderboard.prev": { "text": "上一页" },
+  "leaderboard.next": { "text": "下一页" }
 }

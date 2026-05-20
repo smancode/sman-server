@@ -242,5 +242,13 @@ export function createAdminRouter(db: HubDB, adminToken: string, updatesDir: str
     res.json({ stats: db.getDownloadStats(days), logs: db.getDownloadLogs(days) });
   });
 
+  router.get('/leaderboard', (req: Request, res: Response) => {
+    const page = Math.max(parseInt(String(req.query.page)) || 1, 1);
+    const pageSize = Math.min(Math.max(parseInt(String(req.query.pageSize)) || 20, 1), 100);
+    const sortBy = String(req.query.sortBy || 'total');
+    const search = req.query.search ? String(req.query.search).trim() : undefined;
+    res.json(db.getLeaderboardPage({ page, pageSize, sortBy, search }));
+  });
+
   return router;
 }

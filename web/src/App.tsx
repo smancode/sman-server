@@ -13,10 +13,11 @@ import { ErrorsTab } from './components/ErrorsTab';
 import { FeedbacksTab } from './components/FeedbacksTab';
 import { AnalyticsTab } from './components/AnalyticsTab';
 import { SkillSchedulerTab } from './components/SkillSchedulerTab';
+import { LeaderboardTab } from './components/LeaderboardTab';
 import { useAuthStore } from './stores/auth';
 import { useThemeStore } from './stores/theme';
 
-type Tab = 'dashboard' | 'clients' | 'broadcasts' | 'upload' | 'analytics' | 'errors' | 'feedbacks' | 'rooms' | 'agents' | 'tasks' | 'skillScheduler';
+type Tab = 'dashboard' | 'clients' | 'broadcasts' | 'upload' | 'analytics' | 'errors' | 'feedbacks' | 'rooms' | 'agents' | 'tasks' | 'skillScheduler' | 'leaderboard';
 
 const NAV_ITEMS: { key: Tab; labelKey: string; group: string }[] = [
   { key: 'dashboard', labelKey: 'tab.dashboard', group: 'overview' },
@@ -26,6 +27,7 @@ const NAV_ITEMS: { key: Tab; labelKey: string; group: string }[] = [
   { key: 'analytics', labelKey: 'tab.analytics', group: 'overview' },
   { key: 'errors', labelKey: 'tab.errors', group: 'overview' },
   { key: 'feedbacks', labelKey: 'tab.feedbacks', group: 'overview' },
+  { key: 'leaderboard', labelKey: 'tab.leaderboard', group: 'leaderboard' },
   { key: 'rooms', labelKey: 'tab.rooms', group: 'hub' },
   { key: 'agents', labelKey: 'tab.agents', group: 'hub' },
   { key: 'tasks', labelKey: 'tab.tasks', group: 'hub' },
@@ -34,6 +36,7 @@ const NAV_ITEMS: { key: Tab; labelKey: string; group: string }[] = [
 
 const GROUP_LABELS: Record<string, string> = {
   overview: 'sidebar.groupOverview',
+  leaderboard: 'sidebar.groupLeaderboard',
   hub: 'sidebar.groupHub',
 };
 
@@ -122,6 +125,7 @@ export function App() {
           {tab === 'tasks' && <TasksTab />}
           {tab === 'errors' && <ErrorsTab />}
           {tab === 'feedbacks' && <FeedbacksTab />}
+          {tab === 'leaderboard' && <LeaderboardTab />}
           {tab === 'skillScheduler' && <SkillSchedulerTab />}
         </div>
       </main>

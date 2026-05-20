@@ -79,4 +79,6 @@ export const api = {
     request('/skill-scheduler/trigger', token, { method: 'POST' }),
   getSkillSchedulerLogs: (token: string, limit = 100) =>
     request(`/skill-scheduler/logs?limit=${limit}`, token),
+  getLeaderboard: (token: string, params: URLSearchParams) =>
+    request(`/leaderboard?${params}`, token),
 };
