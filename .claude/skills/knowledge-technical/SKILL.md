@@ -1,129 +1,41 @@
 ---
 name: knowledge-technical
-description: Technical architecture for sman-server: AES-256-GCM encryption, SQLite patterns with better-sqlite3, file serving, and update distribution
+description: "Technical architecture for sman-server. Verified against code."
 _scanned:
-  commitHash: 6a87529d7c30fef9a812f0d1b6bbfa87c5870fed
-  scannedAt: 2026-05-20T03:04:00Z
-  branch: master
+  commitHash: 60687534e9e2a4acf2800a04840cf09048ff3dda
+  scannedAt: "2026-05-20T19:11:59Z"
+  branch: "master"
 ---
 
-# Sman-Server Technical Architecture
+# Technical Architecture
 
-## Crypto System (AES-256-GCM)
+> 贡献者: nasakim | 验证时间: 2026-05-20
 
-### Wire Format
-```
-base64(IV[12 bytes] + ciphertext + authTag[16 bytes])
-```
+## 技术栈
+> by nasakim | 验证: 2026-05
+✅ [已验证] package.json:L14-L18, web/package.json:L10-L12
+- 后端：Express 5 + better-sqlite3
+- 前端：React 19 + Vite
+- 加密：AES-256-GCM
 
-- **Algorithm**: `aes-256-gcm`
-- **IV length**: 12 bytes (random per encryption)
-- **Auth tag**: 16 bytes (appended to ciphertext)
-- **Key derivation**: PSK (32-char string) converted directly to UTF-8 buffer
+## 加密方案
+> by nasakim | 验证: 2026-05
+✅ [已验证] src/crypto.ts:L3-L27, src/routes/report.ts:L7, L33-L35
+- 预共享密钥(PSK) 32 字符
+- 时间戳防重放（5 分钟时间窗：`REPLAY_WINDOW_MS = 5 * 60 * 1000`）
+- Wire format：base64(IV + ciphertext + authTag)，IV 12 字节，authTag 16 字节
 
-### Usage
-```typescript
-import { encrypt, decrypt } from './crypto.js';
+## 安全约束
+> by nasakim | 验证: 2026-05
+✅ [已验证] src/index.ts:L26-L34, L39-L42, L245-L253
+- PSK 强制 32 字符（启动校验）：`process.env.SMAN_PSK.length === 32`
+- 管理接口强制 Bearer Token：`ADMIN_TOKEN` 必需
+- 生产 SPA 仅 localhost 访问：静态文件服务无额外限制（需依赖反向代理）
 
-const encrypted = encrypt({ data: 'secret' }, psk); // returns base64 string
-const decrypted = decrypt(encrypted, psk);          // returns original object
-```
-
-### Security Features
-- Random IV per encryption (non-deterministic ciphertext)
-- Auth tag verification (throws if tampered)
-- PSK version negotiation (currently only version 1)
-- 5-minute replay protection window on `/api/report`
-
-## Database (better-sqlite3)
-
-### Configuration
-```typescript
-const db = new Database(dbPath);
-db.pragma('journal_mode = WAL'); // Enable WAL mode for concurrency
-```
-
-### Patterns
-
-**Upsert (INSERT ... ON CONFLICT DO UPDATE):**
-```sql
-INSERT INTO clients (client_id, version, ...)
-VALUES (?, ?, ...)
-ON CONFLICT(client_id) DO UPDATE SET
-  version = excluded.version,
-  last_seen = excluded.last_seen
-```
-
-**Soft delete via flag:**
-```typescript
-db.prepare('UPDATE broadcasts SET active = 0 WHERE id = ?').run(id);
-```
-
-**Transaction wrapper:**
-```typescript
-db.transaction(() => {
-  db.prepare('DELETE FROM client_workspaces WHERE client_id = ?').run(clientId);
-  const insert = db.prepare('INSERT INTO client_workspaces (...) VALUES (...)');
-  for (const ws of workspaces) {
-    insert.run(clientId, ws, now);
-  }
-})();
-```
-
-### Prepared Statements
-All queries use prepared statements (`.prepare()`). `.all()` for multiple rows, `.get()` for single, `.run()` for writes.
-
-## File Serving Architecture
-
-### Update Files
-- Served from `data/updates/sman/`
-- Routes: `/updates/sman/:filename`, `/download/:filename`
-- Friendly routes: `/download/windows-x64` → parses `latest.yml`, redirects to actual file
-- Redirect mappings: `data/updates/sman/_redirects/<filename>` contains external URL
-
-### Auto-generated yml
-When uploading `.exe` or `.zip`, automatically generate `latest.yml` or `latest-mac.yml`:
-```yaml
-version: 1.2.3
-files:
-  - url: Sman-Setup-1.2.3.exe
-    sha512: <base64 hash>
-    size: 123456
-releaseDate: '2026-05-20T10:00:00.000Z'
-```
-
-## Request/Response Encryption
-
-### Client → Server (POST /api/report)
-```typescript
-// Request body (encrypted)
-{
-  payload: "<base64 blob>",  // encrypt({ clientId, version, ... }, psk)
-  timestamp: 1716192000,     // Unix seconds (replay protection)
-  pskVersion: 1
-}
-
-// Response (plain JSON)
-{
-  ok: true,
-  serverTime: "2026-05-20T10:00:00.000Z",
-  commands: []  // skill-auto-updater commands
-}
-```
-
-### Server → Client (POST /api/broadcasts)
-Response payload is encrypted before sending: `encrypt(messages, psk)`
-
-## SPA Fallback Pattern
-
-Static files served from `dist/public/`. In production, SPA fallback only works for `localhost` requests:
-```typescript
-app.use(express.static(publicDir));
-app.use((req, res) => {
-  if (req.method === 'GET' && req.accepts('html')) {
-    res.sendFile(path.join(publicDir, 'index.html'));
-    return;
-  }
-  res.status(404).json({ error: 'Not found' });
-});
-```
+## 打包目标
+> by nasakim | 验证: 2026-05
+✅ [已验证] pack.sh:L10-L13
+- Windows x64 自包含（内置 `node.exe`）
+- ARM64 开发机需切 x64 Node：`fnm use 22 --arch x64`
+- pnpm 符号链接需展开（Windows zip 解压权限问题）
+- 用 bestzip 非 tar（`tar -a` 生成 tar 格式，Windows 资源管理器无法直接打开）

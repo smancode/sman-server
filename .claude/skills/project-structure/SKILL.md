@@ -1,16 +1,16 @@
 ---
 name: project-structure
-description: Project structure knowledge for sman-server (management hub with encrypted reporting, broadcasts, and admin dashboard)
+description: Project structure knowledge for sman-server (management hub with encrypted reporting, broadcasts, admin dashboard, and achievement leaderboard)
 _scanned:
-  commitHash: 6a87529d7c30fef9a812f0d1b6bbfa87c5870fed
-  scannedAt: 2026-05-19T17:53:11+08:00
+  commitHash: 60687534e9e2a4acf2800a04840cf09048ff3dda
+  scannedAt: 2026-05-21T14:30:00+08:00
   branch: master
 ---
 
 ## Tech Stack
 
 - **Server**: TypeScript + Express 5 + better-sqlite3 (WAL mode, raw SQL, no ORM)
-- **Admin UI**: React 19 + Vite + Zustand (state) + hand-written CSS
+- **Admin UI**: React 19 + Vite + Zustand + hand-written CSS
 - **Build**: ESM throughout, tsx for dev, tsc for build
 - **Package Manager**: pnpm
 - **Security**: AES-256-GCM encryption for client-server communication
@@ -48,10 +48,10 @@ sman-server/
 |--------|------|---------|
 | Server Core | `src/` | Express API, WebSocket, database, crypto |
 | Routes | `src/routes/` | API endpoints (admin, hub-api, report, broadcast, rooms, tasks) |
-| Database | `src/db.ts` | HubDB class with clients, reports, broadcasts, read_log tables |
+| Database | `src/db.ts` | HubDB with clients, reports, broadcasts, read_log, achievement_leaderboard |
 | WebSocket | `src/ws-server.ts` | WebSocket server for real-time communication |
 | Task Engine | `src/task-engine.ts` | Background task processing |
-| Admin UI | `web/src/` | React admin dashboard with auth and CRUD |
+| Admin UI | `web/src/` | React admin dashboard with auth, CRUD, and leaderboard |
 
 ## How to Build and Run
 
@@ -73,11 +73,7 @@ pnpm test:watch             # vitest watch mode
 
 ## Environment Setup
 
-Copy `.env.example` to `.env`. Required:
-- `PSK` — 32-char pre-shared key for AES-256-GCM
-- `ADMIN_TOKEN` — bearer token for admin API
-- `PORT` — server port (default: 5882)
-- `PSK_VERSION` — must be `1`
+Copy `.env.example` to `.env`. Required: `PSK` (32-char), `ADMIN_TOKEN`, `PORT` (default: 5882), `PSK_VERSION` (must be `1`)
 
 ## Key Patterns
 
@@ -86,3 +82,4 @@ Copy `.env.example` to `.env`. Required:
 - Broadcasts use soft delete (`active` flag)
 - Admin routes require `Authorization: Bearer <ADMIN_TOKEN>`
 - Tests create temp database in `os.tmpdir()` per file
+- ⚠️ NEW: Achievement system uses JSON columns for flexible dimension scoring

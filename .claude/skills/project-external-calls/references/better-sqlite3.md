@@ -37,9 +37,10 @@ db.transaction(() => {
 | File | Purpose |
 |------|---------|
 | `src/db.ts` | HubDB class wrapping all database operations |
-| `src/routes/report.ts` | Client upsert, report insertion, error reports, feedback |
+| `src/routes/report.ts` | Client upsert, report insertion, error reports, feedback, achievement reports, leaderboard |
 | `src/routes/broadcast.ts` | Broadcast queries, read tracking |
-| `src/routes/admin.ts` | Stats, client listing, broadcast CRUD, analytics queries |
+| `src/routes/admin.ts` | Stats, client listing, broadcast CRUD, analytics queries, leaderboard management |
+| `src/routes/hub-api.ts` | Client hub settings queries |
 | `src/index.ts` | Page view tracking, download logging |
 
 ## Purpose
@@ -53,6 +54,7 @@ db.transaction(() => {
 - Page view and download analytics
 - Hub settings (feature flags)
 - Client workspaces
+- Achievement leaderboard and change logs
 
 ## Database Schema
 
@@ -65,6 +67,8 @@ Key tables:
 - `feedback` - User feedback
 - `page_views`, `page_view_logs`, `download_logs` - Analytics
 - `client_workspaces` - Workspace associations
+- `achievement_leaderboard` - Agent achievement rankings with dimension scores
+- `achievement_leaderboard_log` - Audit trail for leaderboard changes
 
 ## WAL Mode
 

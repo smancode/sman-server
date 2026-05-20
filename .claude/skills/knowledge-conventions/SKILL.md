@@ -1,64 +1,34 @@
 ---
 name: knowledge-conventions
-description: Development conventions for sman-server: TypeScript patterns, error handling, naming rules, route module structure, and testing practices
+description: "Development conventions for sman-server. Verified against code."
 _scanned:
-  commitHash: 6a87529d7c30fef9a812f0d1b6bbfa87c5870fed
-  scannedAt: 2026-05-20T03:04:00Z
-  branch: master
+  commitHash: 60687534e9e2a4acf2800a04840cf09048ff3dda
+  scannedAt: "2026-05-20T19:11:59Z"
+  branch: "master"
 ---
 
-# Sman-Server Coding Conventions
+# Development Conventions
 
-## TypeScript Patterns
+> 贡献者: nasakim | 验证时间: 2026-05-20
 
-- **ESM imports with `.js` extensions**: Always use `.js` in import paths (e.g., `import { foo } from './db.js'`)
-- **Type annotations**: Explicit parameter types, return types can be inferred
-- **Interface naming**: Use `Interface` suffix for records (e.g., `ClientRecord`, `BroadcastRow`)
-- **String literal types**: Use union types for constants (e.g., `'info' | 'warning' | 'update'`)
+## 技术栈选择
+> by nasakim | 验证: 2026-05
+✅ [已验证] package.json:L1-L6, web/package.json:L1-L4
+- ESM 全链路：`"type": "module"`，TypeScript imports 用 `.js` 扩展，tsx 直接运行无编译步骤
+- 无 ORM、无路由库：原生 SQL (better-sqlite3)、前端纯状态切换、手写 CSS
+- 包管理用 pnpm 严格模式（符号链接隔离）
 
-## Route Module Structure
+## 数据库配置
+> by nasakim | 验证: 2026-05
+✅ [已验证] src/db.ts:L63
+- 数据库 WAL 模式：`journal_mode = WAL`，单文件 SQLite
 
-All route modules export factory functions: `createXRouter(dependencies, ...)` returning `Router`. No global state.
+## 软删除模式
+> by nasakim | 验证: 2026-05
+✅ [已验证] src/db.ts:L92, src/db.ts:L253-L254
+- 广播消息使用软删除（`active` 标志位），不做物理删除
 
-```typescript
-export function createReportRouter(db: HubDB, psk: string): Router {
-  const router = Router();
-  router.post('/endpoint', (req, res) => { /* ... */ });
-  return router;
-}
-```
-
-## Error Handling
-
-- **Auth**: Return 401 with `{ error: 'Unauthorized' }` — never throw
-- **Validation**: Return 400 with error message
-- **Decryption failures**: Wrap in try-catch, return 400 "Invalid request"
-- **Database errors**: Let them bubble (Express handles 500)
-
-## Naming Conventions
-
-- **Database tables**: snake_case (e.g., `client_id`, `first_seen`)
-- **TypeScript interfaces**: camelCase (e.g., `clientId`, `firstName`)
-- **Constants**: UPPER_SNAKE_CASE (e.g., `REPLAY_WINDOW_MS`)
-- **Private methods**: prefix with `_` (if needed) or keep as class private
-
-## Testing (Vitest)
-
-- Test files: `src/__tests__/*.test.ts`
-- Use `describe` blocks for grouping
-- Test setup: create temp DB in `os.tmpdir()` per test file
-- Mock PSK: `'0123456789abcdef0123456789abcdef'` (exactly 32 bytes)
-
-## Security Patterns
-
-- **Bearer token auth**: Middleware checks `Authorization: Bearer ${token}` on all `/admin/*` routes
-- **Replay protection**: 5-minute timestamp window for encrypted requests
-- **IP-based rate limiting**: In-memory Map with periodic cleanup
-
-## File Organization
-
-- `src/index.ts` — App entry, Express setup, route mounting
-- `src/types.ts` — All shared TypeScript interfaces
-- `src/db.ts` — `HubDB` class (all SQLite operations)
-- `src/routes/*.ts` — Route modules (factory pattern)
-- `src/crypto.ts` — Encryption utilities (no dependencies on rest of codebase)
+## 开发启动
+> by nasakim | 验证: 2026-05
+✅ [已验证] dev.sh:L1-L6
+- 启动命令统一用 `bash dev.sh`（API :5882 + 前端 :4000）
