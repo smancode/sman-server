@@ -570,7 +570,8 @@ export class HubDB {
     const { page, pageSize, sortBy, search } = params;
     const offset = (page - 1) * pageSize;
 
-    const allowedDimensions = ['sessions', 'messages', 'tokens', 'cron_jobs', 'earth_path', 'bot_sessions', 'bot_messages', 'bot_count', 'streak'];
+    const allowedDimensions = ['sessions', 'messages', 'tokens', 'cron_jobs', 'earth_path', 'bot_sessions', 'bot_messages', 'bot_count', 'streak',
+      'total_sessions', 'total_messages', 'total_tokens', 'total_cron_runs', 'total_smartpath_runs', 'bot_sessions_total', 'bot_messages_total', 'bot_count_total', 'current_streak'];
     let orderBy: string;
     if (sortBy === 'total') {
       orderBy = 'total_points DESC, total_unlocked DESC, updated_at ASC';

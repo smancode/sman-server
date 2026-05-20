@@ -21,23 +21,23 @@ interface PageData {
 }
 
 const DIMENSIONS = [
-  { key: 'total', labelKey: 'leaderboard.dimTotal' },
-  { key: 'sessions', labelKey: 'leaderboard.dimSessions' },
-  { key: 'messages', labelKey: 'leaderboard.dimMessages' },
-  { key: 'tokens', labelKey: 'leaderboard.dimTokens' },
-  { key: 'cron_jobs', labelKey: 'leaderboard.dimCronJobs' },
-  { key: 'earth_path', labelKey: 'leaderboard.dimEarthPath' },
-  { key: 'bot_sessions', labelKey: 'leaderboard.dimBotSessions' },
-  { key: 'bot_messages', labelKey: 'leaderboard.dimBotMessages' },
-  { key: 'bot_count', labelKey: 'leaderboard.dimBotCount' },
-  { key: 'streak', labelKey: 'leaderboard.dimStreak' },
+  { key: 'total', jsonKey: '', labelKey: 'leaderboard.dimTotal' },
+  { key: 'sessions', jsonKey: 'total_sessions', labelKey: 'leaderboard.dimSessions' },
+  { key: 'messages', jsonKey: 'total_messages', labelKey: 'leaderboard.dimMessages' },
+  { key: 'tokens', jsonKey: 'total_tokens', labelKey: 'leaderboard.dimTokens' },
+  { key: 'cron_jobs', jsonKey: 'total_cron_runs', labelKey: 'leaderboard.dimCronJobs' },
+  { key: 'earth_path', jsonKey: 'total_smartpath_runs', labelKey: 'leaderboard.dimEarthPath' },
+  { key: 'bot_sessions', jsonKey: 'bot_sessions_total', labelKey: 'leaderboard.dimBotSessions' },
+  { key: 'bot_messages', jsonKey: 'bot_messages_total', labelKey: 'leaderboard.dimBotMessages' },
+  { key: 'bot_count', jsonKey: 'bot_count_total', labelKey: 'leaderboard.dimBotCount' },
+  { key: 'streak', jsonKey: 'current_streak', labelKey: 'leaderboard.dimStreak' },
 ] as const;
 
-function getDimValue(dimensionScores: string, key: string): number {
-  if (key === 'total') return 0;
+function getDimValue(dimensionScores: string, jsonKey: string): number {
+  if (!jsonKey) return 0;
   try {
     const obj = JSON.parse(dimensionScores);
-    return obj[key] ?? 0;
+    return obj[jsonKey] ?? 0;
   } catch {
     return 0;
   }
@@ -47,6 +47,10 @@ function formatNumber(n: number): string {
   if (n >= 1_000_000) return (n / 1_000_000).toFixed(1) + 'M';
   if (n >= 1_000) return (n / 1_000).toFixed(1) + 'K';
   return String(n);
+}
+
+function dimJsonKey(dimKey: string): string {
+  return DIMENSIONS.find(d => d.key === dimKey)?.jsonKey ?? '';
 }
 
 export function LeaderboardTab() {
@@ -63,7 +67,8 @@ export function LeaderboardTab() {
   const load = useCallback((p: number, sort: string, s: string) => {
     setLoading(true);
     setError('');
-    const params = new URLSearchParams({ page: String(p), pageSize: String(pageSize), sortBy: sort });
+    const jsonKey = dimJsonKey(sort);
+    const params = new URLSearchParams({ page: String(p), pageSize: String(pageSize), sortBy: jsonKey || sort });
     if (s) params.set('search', s);
     api.getLeaderboard(token, params)
       .then((d) => { setData(d as PageData); setLoading(false); })
@@ -171,23 +176,23 @@ export function LeaderboardTab() {
               </thead>
               <tbody>
                 {data.entries.map(entry => (
-                  <tr key={entry.agentId} className={sortBy !== 'total' && getDimValue(entry.dimensionScores, sortBy) > 0 ? 'leaderboard-highlight-row' : ''}>
+                  <tr key={entry.agentId} className={sortBy !== 'total' && getDimValue(entry.dimensionScores, dimJsonKey(sortBy)) > 0 ? 'leaderboard-highlight-row' : ''}>
                     <td className="mono">{entry.rank}</td>
                     <td className="leaderboard-name">{entry.agentName}</td>
                     <td><span className={`badge ${levelBadgeClass(entry.level)}`}>{entry.level}</span></td>
                     {sortBy !== 'total' && (
-                      <td className="mono leaderboard-active-col">{formatNumber(getDimValue(entry.dimensionScores, sortBy))}</td>
+                      <td className="mono leaderboard-active-col">{formatNumber(getDimValue(entry.dimensionScores, dimJsonKey(sortBy)))}</td>
                     )}
                     <td className="mono">{formatNumber(entry.totalPoints)}</td>
-                    <td className="mono">{formatNumber(getDimValue(entry.dimensionScores, 'sessions'))}</td>
-                    <td className="mono">{formatNumber(getDimValue(entry.dimensionScores, 'messages'))}</td>
-                    <td className="mono">{formatNumber(getDimValue(entry.dimensionScores, 'tokens'))}</td>
-                    <td className="mono">{formatNumber(getDimValue(entry.dimensionScores, 'cron_jobs'))}</td>
-                    <td className="mono">{formatNumber(getDimValue(entry.dimensionScores, 'earth_path'))}</td>
-                    <td className="mono">{formatNumber(getDimValue(entry.dimensionScores, 'bot_sessions'))}</td>
-                    <td className="mono">{formatNumber(getDimValue(entry.dimensionScores, 'bot_messages'))}</td>
-                    <td className="mono">{formatNumber(getDimValue(entry.dimensionScores, 'bot_count'))}</td>
-                    <td className="mono">{getDimValue(entry.dimensionScores, 'streak')}</td>
+                    <td className="mono">{formatNumber(getDimValue(entry.dimensionScores, 'total_sessions'))}</td>
+                    <td className="mono">{formatNumber(getDimValue(entry.dimensionScores, 'total_messages'))}</td>
+                    <td className="mono">{formatNumber(getDimValue(entry.dimensionScores, 'total_tokens'))}</td>
+                    <td className="mono">{formatNumber(getDimValue(entry.dimensionScores, 'total_cron_runs'))}</td>
+                    <td className="mono">{formatNumber(getDimValue(entry.dimensionScores, 'total_smartpath_runs'))}</td>
+                    <td className="mono">{formatNumber(getDimValue(entry.dimensionScores, 'bot_sessions_total'))}</td>
+                    <td className="mono">{formatNumber(getDimValue(entry.dimensionScores, 'bot_messages_total'))}</td>
+                    <td className="mono">{formatNumber(getDimValue(entry.dimensionScores, 'bot_count_total'))}</td>
+                    <td className="mono">{getDimValue(entry.dimensionScores, 'current_streak')}</td>
                     <td className="mono">{formatDate(entry.updatedAt)}</td>
                   </tr>
                 ))}
