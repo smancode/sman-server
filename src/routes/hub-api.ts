@@ -412,5 +412,11 @@ export function createHubApiRouter(roomDB: RoomDB, taskDB: TaskDB, psk: string, 
     res.json({ payload: encrypt({ enabled: val === '1' }, psk) });
   });
 
+  // Hub dev-mode (read-only for clients)
+  router.post('/hub-dev-mode', (_req: Request, res: Response) => {
+    const val = hubDB.getSetting('hub_dev_mode');
+    res.json({ payload: encrypt({ enabled: val === '1' }, psk) });
+  });
+
   return router;
 }

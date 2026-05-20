@@ -109,6 +109,7 @@ export class HubDB {
         updated_at TEXT DEFAULT (datetime('now', 'localtime'))
       );
       INSERT OR IGNORE INTO hub_settings (key, value) VALUES ('stardom_dev_mode', '0');
+      INSERT OR IGNORE INTO hub_settings (key, value) VALUES ('hub_dev_mode', '0');
 
       CREATE TABLE IF NOT EXISTS error_reports (
         id INTEGER PRIMARY KEY AUTOINCREMENT,

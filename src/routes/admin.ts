@@ -191,6 +191,22 @@ export function createAdminRouter(db: HubDB, adminToken: string, updatesDir: str
     res.json({ ok: true, enabled });
   });
 
+  // Hub dev-mode toggle
+  router.get('/hub-dev-mode', (_req: Request, res: Response) => {
+    const val = db.getSetting('hub_dev_mode');
+    res.json({ enabled: val === '1' });
+  });
+
+  router.put('/hub-dev-mode', (req: Request, res: Response) => {
+    const { enabled } = req.body;
+    if (typeof enabled !== 'boolean') {
+      res.status(400).json({ error: 'enabled (boolean) required' });
+      return;
+    }
+    db.setSetting('hub_dev_mode', enabled ? '1' : '0');
+    res.json({ ok: true, enabled });
+  });
+
   router.get('/error-reports', (req: Request, res: Response) => {
     const limit = Math.min(Math.max(parseInt(String(req.query.limit)) || 100, 1), 500);
     res.json(db.getErrorReports(limit));
