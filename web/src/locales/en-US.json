@@ -131,6 +131,8 @@
   "common.languageSwitch": { "text": "Language" },
   "dashboard.stardomDevMode": { "text": "Stardom Dev Mode" },
   "dashboard.stardomDevModeHint": { "text": "When enabled, clients can access the Stardom page" },
+  "dashboard.hubDevMode": { "text": "Team Dev Mode" },
+  "dashboard.hubDevModeHint": { "text": "When enabled, clients can access the Team page" },
 
   "errors.noData": { "text": "No error reports yet" },
   "errors.loadFailed": { "text": "Failed to load error reports" },

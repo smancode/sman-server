@@ -131,6 +131,8 @@
   "common.languageSwitch": { "text": "语言" },
   "dashboard.stardomDevMode": { "text": "协作星图开发模式" },
   "dashboard.stardomDevModeHint": { "text": "开启后客户端可进入协作星图页面" },
+  "dashboard.hubDevMode": { "text": "组队开发模式" },
+  "dashboard.hubDevModeHint": { "text": "开启后客户端可进入组队页面" },
 
   "errors.noData": { "text": "暂无错误上报" },
   "errors.loadFailed": { "text": "加载错误上报失败" },

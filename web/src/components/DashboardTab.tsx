@@ -9,6 +9,7 @@ export function DashboardTab() {
   const [stats, setStats] = useState<AdminStats | null>(null);
   const [error, setError] = useState('');
   const [stardomDev, setStardomDev] = useState(false);
+  const [hubDev, setHubDev] = useState(false);
   const [loadingToggle, setLoadingToggle] = useState(false);
   useLocale();
 
@@ -31,6 +32,10 @@ export function DashboardTab() {
         const data = await api.getStardomDevMode(token) as { enabled: boolean };
         setStardomDev(data.enabled);
       } catch { /* ignore */ }
+      try {
+        const data = await api.getHubDevMode(token) as { enabled: boolean };
+        setHubDev(data.enabled);
+      } catch { /* ignore */ }
     })();
   }, [token]);
 
@@ -39,6 +44,15 @@ export function DashboardTab() {
     try {
       await api.setStardomDevMode(token!, enabled);
       setStardomDev(enabled);
+    } catch { /* ignore */ }
+    setLoadingToggle(false);
+  };
+
+  const handleToggleHub = async (enabled: boolean) => {
+    setLoadingToggle(true);
+    try {
+      await api.setHubDevMode(token!, enabled);
+      setHubDev(enabled);
     } catch { /* ignore */ }
     setLoadingToggle(false);
   };
@@ -76,6 +90,19 @@ export function DashboardTab() {
             onClick={() => handleToggleStardom(!stardomDev)}
           >
             {stardomDev ? t('broadcast.active') : t('broadcast.inactive')}
+          </button>
+        </div>
+        <div className="stat-card" style={{ gridColumn: '1 / -1', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <div>
+            <div style={{ fontWeight: 600 }}>{t('dashboard.hubDevMode')}</div>
+            <div style={{ fontSize: '0.8em', opacity: 0.6 }}>{t('dashboard.hubDevModeHint')}</div>
+          </div>
+          <button
+            className={`btn ${hubDev ? 'btn-primary' : 'btn-secondary'}`}
+            disabled={loadingToggle}
+            onClick={() => handleToggleHub(!hubDev)}
+          >
+            {hubDev ? t('broadcast.active') : t('broadcast.inactive')}
           </button>
         </div>
       </div>
