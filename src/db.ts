@@ -173,6 +173,17 @@ export class HubDB {
         PRIMARY KEY (client_id, workspace)
       );
       CREATE INDEX IF NOT EXISTS idx_client_workspaces_updated ON client_workspaces(updated_at);
+
+      CREATE TABLE IF NOT EXISTS achievement_leaderboard (
+        agent_id TEXT PRIMARY KEY,
+        agent_name TEXT NOT NULL,
+        total_points INTEGER NOT NULL DEFAULT 0,
+        total_unlocked INTEGER NOT NULL DEFAULT 0,
+        level TEXT NOT NULL DEFAULT 'bronze',
+        tier_counts TEXT NOT NULL DEFAULT '{}',
+        updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+      );
+      CREATE INDEX IF NOT EXISTS idx_achievement_leaderboard_points ON achievement_leaderboard(total_points DESC);
     `);
   }
 
@@ -452,6 +463,37 @@ export class HubDB {
 
   deleteFeedback(id: number): void {
     this.db.prepare('DELETE FROM feedback WHERE id = ?').run(id);
+  }
+
+  // ── Achievement leaderboard ──
+
+  upsertAchievementEntry(params: { agentId: string; agentName: string; totalPoints: number; totalUnlocked: number; level: string; tierCounts: string }): void {
+    const now = new Date().toISOString();
+    this.db.prepare(`
+      INSERT INTO achievement_leaderboard (agent_id, agent_name, total_points, total_unlocked, level, tier_counts, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(agent_id) DO UPDATE SET
+        agent_name = excluded.agent_name,
+        total_points = excluded.total_points,
+        total_unlocked = excluded.total_unlocked,
+        level = excluded.level,
+        tier_counts = excluded.tier_counts,
+        updated_at = excluded.updated_at
+    `).run(params.agentId, params.agentName, params.totalPoints, params.totalUnlocked, params.level, params.tierCounts, now);
+  }
+
+  getLeaderboard(limit = 100): { rank: number; agentName: string; totalPoints: number; totalUnlocked: number; level: string; updatedAt: string }[] {
+    const rows = this.db.prepare(
+      'SELECT agent_name, total_points, total_unlocked, level, updated_at FROM achievement_leaderboard ORDER BY total_points DESC, total_unlocked DESC, updated_at ASC LIMIT ?'
+    ).all(limit) as { agent_name: string; total_points: number; total_unlocked: number; level: string; updated_at: string }[];
+    return rows.map((r, i) => ({
+      rank: i + 1,
+      agentName: r.agent_name,
+      totalPoints: r.total_points,
+      totalUnlocked: r.total_unlocked,
+      level: r.level,
+      updatedAt: r.updated_at,
+    }));
   }
 
   close(): void {

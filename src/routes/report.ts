@@ -148,5 +148,53 @@ export function createReportRouter(db: HubDB, psk: string, getSkillCommands?: (c
     }
   });
 
+  // Achievement leaderboard: upload score
+  router.post('/achievement-report', (req: Request, res: Response) => {
+    try {
+      const { payload, timestamp, pskVersion } = req.body as EncryptedRequest;
+
+      if (pskVersion !== 1) {
+        res.status(400).json({ error: 'Unsupported PSK version' });
+        return;
+      }
+
+      const now = Date.now();
+      if (Math.abs(now - timestamp * 1000) > REPLAY_WINDOW_MS) {
+        res.status(400).json({ error: 'Timestamp out of range' });
+        return;
+      }
+
+      const data = decrypt(payload, psk) as Record<string, unknown>;
+
+      if (!data.agentId || !data.agentName || typeof data.totalPoints !== 'number') {
+        res.status(400).json({ error: 'Missing required fields' });
+        return;
+      }
+
+      db.upsertAchievementEntry({
+        agentId: data.agentId as string,
+        agentName: data.agentName as string,
+        totalPoints: data.totalPoints as number,
+        totalUnlocked: (data.totalUnlocked as number) || 0,
+        level: (data.level as string) || 'bronze',
+        tierCounts: (data.tierCounts as string) || '{}',
+      });
+
+      res.json({ ok: true });
+    } catch {
+      res.status(400).json({ error: 'Invalid request' });
+    }
+  });
+
+  // Achievement leaderboard: get rankings (public, no auth needed)
+  router.get('/achievement-leaderboard', (_req: Request, res: Response) => {
+    try {
+      const entries = db.getLeaderboard(100);
+      res.json({ entries });
+    } catch {
+      res.status(500).json({ error: 'Failed to load leaderboard' });
+    }
+  });
+
   return router;
 }
