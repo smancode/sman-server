@@ -178,6 +178,7 @@ export function createReportRouter(db: HubDB, psk: string, getSkillCommands?: (c
         totalUnlocked: (data.totalUnlocked as number) || 0,
         level: (data.level as string) || 'bronze',
         tierCounts: (data.tierCounts as string) || '{}',
+        dimensionScores: (data.dimensionScores as string) || '{}',
       });
 
       res.json({ ok: true });
@@ -187,10 +188,16 @@ export function createReportRouter(db: HubDB, psk: string, getSkillCommands?: (c
   });
 
   // Achievement leaderboard: get rankings (public, no auth needed)
-  router.get('/achievement-leaderboard', (_req: Request, res: Response) => {
+  router.get('/achievement-leaderboard', (req: Request, res: Response) => {
     try {
-      const entries = db.getLeaderboard(100);
-      res.json({ entries });
+      const dimension = req.query.dimension as string | undefined;
+      let entries;
+      if (dimension && dimension !== 'total') {
+        entries = db.getLeaderboardByDimension(dimension, 100);
+      } else {
+        entries = db.getLeaderboard(100);
+      }
+      res.json({ entries, dimension: dimension || 'total' });
     } catch {
       res.status(500).json({ error: 'Failed to load leaderboard' });
     }

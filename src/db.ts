@@ -181,10 +181,18 @@ export class HubDB {
         total_unlocked INTEGER NOT NULL DEFAULT 0,
         level TEXT NOT NULL DEFAULT 'bronze',
         tier_counts TEXT NOT NULL DEFAULT '{}',
+        dimension_scores TEXT NOT NULL DEFAULT '{}',
         updated_at TEXT NOT NULL DEFAULT (datetime('now'))
       );
       CREATE INDEX IF NOT EXISTS idx_achievement_leaderboard_points ON achievement_leaderboard(total_points DESC);
     `);
+
+    // Migration: add dimension_scores column for existing databases
+    try {
+      this.db.exec("ALTER TABLE achievement_leaderboard ADD COLUMN dimension_scores TEXT NOT NULL DEFAULT '{}'");
+    } catch {
+      // Column already exists
+    }
   }
 
   upsertClient(params: UpsertClientParams): void {
@@ -467,19 +475,20 @@ export class HubDB {
 
   // ── Achievement leaderboard ──
 
-  upsertAchievementEntry(params: { agentId: string; agentName: string; totalPoints: number; totalUnlocked: number; level: string; tierCounts: string }): void {
+  upsertAchievementEntry(params: { agentId: string; agentName: string; totalPoints: number; totalUnlocked: number; level: string; tierCounts: string; dimensionScores: string }): void {
     const now = new Date().toISOString();
     this.db.prepare(`
-      INSERT INTO achievement_leaderboard (agent_id, agent_name, total_points, total_unlocked, level, tier_counts, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO achievement_leaderboard (agent_id, agent_name, total_points, total_unlocked, level, tier_counts, dimension_scores, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(agent_id) DO UPDATE SET
         agent_name = excluded.agent_name,
         total_points = excluded.total_points,
         total_unlocked = excluded.total_unlocked,
         level = excluded.level,
         tier_counts = excluded.tier_counts,
+        dimension_scores = excluded.dimension_scores,
         updated_at = excluded.updated_at
-    `).run(params.agentId, params.agentName, params.totalPoints, params.totalUnlocked, params.level, params.tierCounts, now);
+    `).run(params.agentId, params.agentName, params.totalPoints, params.totalUnlocked, params.level, params.tierCounts, params.dimensionScores, now);
   }
 
   getLeaderboard(limit = 100): { rank: number; agentName: string; totalPoints: number; totalUnlocked: number; level: string; updatedAt: string }[] {
@@ -493,6 +502,27 @@ export class HubDB {
       totalUnlocked: r.total_unlocked,
       level: r.level,
       updatedAt: r.updated_at,
+    }));
+  }
+
+  getLeaderboardByDimension(dimension: string, limit = 100): { rank: number; agentName: string; totalPoints: number; totalUnlocked: number; level: string; dimensionValue: number }[] {
+    if (!/^[a-z_]+$/.test(dimension)) {
+      throw new Error('Invalid dimension name');
+    }
+    const rows = this.db.prepare(
+      `SELECT agent_name, total_points, total_unlocked, level,
+        COALESCE(CAST(json_extract(dimension_scores, ?) AS INTEGER), 0) as dim_value
+       FROM achievement_leaderboard
+       ORDER BY dim_value DESC, total_points DESC, updated_at ASC
+       LIMIT ?`
+    ).all(`$.${dimension}`, limit) as { agent_name: string; total_points: number; total_unlocked: number; level: string; dim_value: number }[];
+    return rows.map((r, i) => ({
+      rank: i + 1,
+      agentName: r.agent_name,
+      totalPoints: r.total_points,
+      totalUnlocked: r.total_unlocked,
+      level: r.level,
+      dimensionValue: r.dim_value,
     }));
   }
 

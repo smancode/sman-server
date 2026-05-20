@@ -5,3 +5,6 @@ data/
 hub.key
 web/node_modules/
 deploy-private/
+.sman/paths/*/runs/
+.sman/paths/*/reports/
+.sman/paths/*/tmp/
