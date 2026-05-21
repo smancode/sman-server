@@ -2,8 +2,8 @@
 name: project-apis
 description: API endpoint knowledge for sman-server. Contains all HTTP endpoints with signatures, parameters, business flows, and source references.
 _scanned:
-  commitHash: 60687534e9e2a4acf2800a04840cf09048ff3dda
-  scannedAt: 2026-05-21T12:00:00Z
+  commitHash: 312f64fbef5f2cd1acae067c829101d7e6203a92
+  scannedAt: 2026-05-21T19:16:04Z
   branch: master
 ---
 
@@ -69,3 +69,42 @@ _scanned:
 | GET | /updates/sman/:filename | Download update file (legacy path) | [GET-updates-sman-filename.md](references/GET-updates-sman-filename.md) |
 | GET | /download/windows-x64 | Windows friendly download redirect | [GET-download-windows-x64.md](references/GET-download-windows-x64.md) |
 | GET | /download/macos-arm | macOS ARM friendly download redirect | [GET-download-macos-arm.md](references/GET-download-macos-arm.md) |
+
+## WebSocket API
+
+| Message Type | Direction | Description | Reference |
+|--------------|-----------|-------------|-----------|
+| auth.psk | Client → Server | Authenticate WebSocket connection with PSK | [WS-auth-psk.md](references/WS-auth-psk.md) |
+| agent.register | Client → Server | Register agent in a room with capabilities | [WS-agent-register.md](references/WS-agent-register.md) |
+| agent.unregister | Client → Server | Unregister agent from room | [WS-agent-unregister.md](references/WS-agent-unregister.md) |
+| agent.heartbeat | Client → Server | Update agent heartbeat timestamp | [WS-agent-heartbeat.md](references/WS-agent-heartbeat.md) |
+| agent.list | Client → Server | List all agents in a room | [WS-agent-list.md](references/WS-agent-list.md) |
+| agent.registered | Server → Client | Confirm agent registration with agent ID | [WS-agent-registered.md](references/WS-agent-registered.md) |
+| agent.list.update | Server → Client | Broadcast agent list updates for room | [WS-agent-list-update.md](references/WS-agent-list-update.md) |
+| im.send | Client → Server | Send IM message to room | [WS-im-send.md](references/WS-im-send.md) |
+| im.sync | Client → Server | Request IM message sync since timestamp | [WS-im-sync.md](references/WS-im-sync.md) |
+| im.message | Server → Client | Broadcast IM message to room | [WS-im-message.md](references/WS-im-message.md) |
+| im.agent_delta | Client → Server → Client | Transparent forward agent presence delta | [WS-im-agent-delta.md](references/WS-im-agent-delta.md) |
+| im.presence | Client → Server → Client | Transparent forward presence status | [WS-im-presence.md](references/WS-im-presence.md) |
+| im.typing | Client → Server → Client | Transparent forward typing indicator | [WS-im-typing.md](references/WS-im-typing.md) |
+| error | Server → Client | Error response for any failed operation | [WS-error.md](references/WS-error.md) |
+
+## Summary of Changes (v6068753 → v312f64f)
+
+### New WebSocket IM Feature
+**Purpose**: Enable real-time instant messaging between agents in rooms with message persistence and sync.
+
+**Changes**:
+- Added `IMDB` class (`src/db-im.ts`) for message storage with 7-day retention
+- Added 3 IM message handlers to `WsHub`:
+  - `im.send` - Store and broadcast messages (supports quotes, mentions, attachments)
+  - `im.sync` - Fetch messages after timestamp with 200-message limit
+  - Transparent forwarding for `im.agent_delta`, `im.presence`, `im.typing`
+- Background cleanup job deletes messages older than 7 days (hourly interval)
+
+### Database Schema Changes
+**Breaking**: Added `workspace_name` column to `agents` table in `db-rooms.ts` (migration on startup)
+
+### Endpoint Counts
+- **HTTP endpoints**: 36 (no change)
+- **WebSocket message types**: 17 (added 7 IM-related messages)

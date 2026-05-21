@@ -1,6 +1,6 @@
 # node:crypto
 
-Cryptographic operations for AES-256-GCM encryption/decryption of client communication.
+Cryptographic operations for AES-256-GCM encryption/decryption, UUID generation, and hash calculation.
 
 ## Call Methods
 
@@ -32,6 +32,19 @@ const decrypted = Buffer.concat([decipher.update(ciphertext), decipher.final()])
 const sha512 = crypto.createHash('sha512').update(fileData).digest('base64');
 ```
 
+### UUID Generation (NEW - for IM and rooms)
+```typescript
+// IM message IDs
+const id = crypto.randomUUID();
+
+// Room IDs
+const roomId = crypto.randomUUID();
+
+// Agent IDs (derived from hash + hostname)
+const hash = crypto.createHash('sha256').update(`${clientId}:${workspace}`).digest('hex').slice(0, 12);
+const agentId = `${hostname}:${hash}`;
+```
+
 ## Config Source
 
 - **PSK (Pre-Shared Key)**: 32-character string loaded from:
@@ -48,14 +61,17 @@ const sha512 = crypto.createHash('sha512').update(fileData).digest('base64');
 | `src/routes/report.ts` | Decrypt client reports, error reports, feedback |
 | `src/routes/broadcast.ts` | Decrypt broadcast queries, encrypt broadcast responses |
 | `src/routes/admin.ts` | Calculate SHA512 for uploaded files |
-| `src/ws-server.ts` | Decrypt WebSocket auth messages |
+| `src/ws-server.ts` | Decrypt WebSocket auth messages, generate UUID for IM, hash for agent IDs |
+| `src/db-rooms.ts` | Generate UUID for room creation |
+| `src/db-im.ts` | Generate UUID for IM message IDs |
 
 ## Purpose
 
-**End-to-end encryption** for all client-to-server communication. Ensures:
-- Confidentiality of usage data
-- Integrity verification via authentication tags
-- Replay protection via timestamp validation (±5 minutes)
+**End-to-end encryption** and **unique ID generation**:
+- **Encryption**: Confidentiality of usage data with integrity verification
+- **UUID generation**: Unique identifiers for IM messages, rooms
+- **Hash calculation**: Deterministic agent IDs from client+workspace
+- **Replay protection**: Timestamp validation (±5 minutes)
 
 ## Wire Format
 
@@ -70,3 +86,11 @@ Base64-encoded concatenation:
 - **Key derivation**: Direct UTF-8 bytes from PSK (32 chars = 256 bits)
 - **IV length**: 12 bytes (96 bits) - GCM standard
 - **Auth tag length**: 16 bytes (128 bits)
+
+## New in This Update
+
+**IM Feature** - Added UUID generation for instant messaging:
+- `crypto.randomUUID()` - Generate unique message IDs
+- `crypto.createHash('sha256')` - Generate deterministic agent IDs
+
+This enables reliable message deduplication and agent identification across reconnects.

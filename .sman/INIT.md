@@ -33,6 +33,26 @@ initializedAt: "2026-05-19T01:25:17.622Z"
 
 ## Scan History
 
+### 2026-05-21T19:18:35Z (Commit: 312f64fb)
+**Mode:** 增量更新
+
+**Project Knowledge Skills 更新:**
+- ✅ project-structure: 新增 IM 系统（db-im.ts、rooms、WebSocket 路由）
+- ✅ project-apis: 新增 7 个 WebSocket 消息类型（im.send, im.sync, im.message 等）
+- ✅ project-external-calls: 新增 IMDB 数据库、增强 WebSocket 服务
+- ✅ database-schema: 表数从 15 → 19，新增 im_messages, rooms, room_members 相关表
+
+**Team Knowledge 聚合:**
+- ✅ knowledge-business: 同步更新（无新贡献）
+- ✅ knowledge-conventions: 同步更新（无新贡献）
+- ✅ knowledge-technical: 同步更新（无新贡献）
+
+**关键变更:**
+- 新增: 实时协作和即时通讯系统（Room-based IM、消息持久化、7天自动清理）
+- 新增: Agent 工作区注册和发现（workspace_name 字段、能力声明）
+- 数据库: 新增 4 张表（im_messages, rooms, room_members, agents 扩展）
+- 架构: 第 4 个数据库（data/im.db），独立于主 hub DB
+
 ### 2026-05-20T19:12:54Z (Commit: 60687534)
 **Mode:** 增量更新
 

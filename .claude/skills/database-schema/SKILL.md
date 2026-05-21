@@ -1,8 +1,8 @@
 ---
 name: database-schema
 description: Database schema knowledge for sman-server: table structures, relationships, indexes, and DDL
-commitHash: 60687534e9e2a4acf2800a04840cf09048ff3dda
-scannedAt: 2026-05-21T00:00:00Z
+commitHash: 312f64fbef5f2cd1acae067c829101d7e6203a92
+scannedAt: 2026-05-22T00:00:00Z
 branch: master
 ---
 
@@ -13,7 +13,7 @@ branch: master
 - **Mode**: WAL (Write-Ahead Logging) for concurrency
 - **Location**: `data/hub.db` (created on startup if missing)
 - **Architecture**: No ORM, raw SQL with prepared statements
-- **Total Tables**: 15 tables
+- **Total Tables**: 19 tables
 
 ## Core Tables
 
@@ -55,6 +55,62 @@ Agent achievement tracking with points, levels, tier counts, and dimension score
 
 ### achievement_leaderboard_log
 Historical log of leaderboard changes with field-level diff tracking.
+
+## Real-time Collaboration & IM System (NEW)
+
+### rooms ⚠️ MIGRATION
+Collaboration rooms supporting public/private visibility, password protection, and soft-delete.
+**Migration**: Added `visibility` (public/private) and `password` columns via ALTER TABLE.
+
+### room_members
+Junction table managing room membership with roles (owner/member) and capacity enforcement.
+
+### agents ⚠️ MIGRATION
+AI agent registration with capabilities, status tracking, heartbeat monitoring, and workspace configuration.
+**Migration**: Added `workspace_name` column via ALTER TABLE for human-readable workspace display.
+
+### im_messages
+Instant messaging for rooms with features like mentions, quotes, attachments, message types, and automatic 7-day retention.
+**Relationship**: Links to rooms via room_id, supports quote threading via quote_id.
+
+## Database Separation
+
+The IM and Room system uses **separate SQLite databases**:
+- **Main hub DB**: `data/hub.db` (15 tables: clients, reports, broadcasts, etc.)
+- **Rooms DB**: Managed by `RoomDB` class, path configurable (3 tables: rooms, room_members, agents)
+- **IM DB**: Managed by `IMDB` class, path configurable (1 table: im_messages)
+
+Both Room and IM databases use WAL mode and independent file storage for isolation from the main hub database.
+
+## Schema Changes Summary (Incremental Update)
+
+### New Tables (1)
+- **im_messages**: Chat messages with room-based threading, mentions, quotes, and auto-cleanup
+
+### Modified Tables (1)
+- **agents**: Added `workspace_name TEXT` column (nullable) for display purposes
+
+### Integration Points
+- **im_messages.room_id** → Logical foreign key to `rooms.id`
+- **agents.workspace_name** → Display field complementing existing `workspace` path
+- **Room/Agent system** → Standalone database with separate connection and file
+
+## Migration Requirements
+
+### ⚠️ ALTER TABLE Migrations
+1. **agents.workspace_name** (db-rooms.ts:67-69)
+   - Adds optional human-readable workspace name
+   - Non-breaking (NULL allowed, no data migration needed)
+
+2. **rooms.visibility** (db-rooms.ts:56-58)
+   - Adds 'public'/'private' with CHECK constraint
+   - Non-breaking (defaults to 'private')
+
+3. **rooms.password** (db-rooms.ts:61-64)
+   - Adds optional password for private rooms
+   - Non-breaking (NULL allowed)
+
+All migrations use try-catch blocks to handle existing columns gracefully.
 
 ## References
 See `references/` directory for detailed table documentation.

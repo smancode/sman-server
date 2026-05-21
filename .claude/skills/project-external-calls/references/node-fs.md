@@ -1,6 +1,6 @@
 # node:fs
 
-File system operations for update files, redirect mappings, static pages, and PSK loading.
+File system operations for update files, redirect mappings, static pages, PSK loading, and database directory creation.
 
 ## Call Methods
 
@@ -52,6 +52,7 @@ const mtime = fs.statSync(path.join(updatesDir, f)).mtime;
 - **Pages directory**: `data/pages/` (public static pages)
 - **PSK file**: `hub.key` in project root (optional, fallback if env var not set)
 - **Redirect directory**: `data/updates/sman/_redirects/` (created on demand)
+- **Database directories**: Created automatically by each DB class constructor
 
 ## Call Locations
 
@@ -59,18 +60,18 @@ const mtime = fs.statSync(path.join(updatesDir, f)).mtime;
 |------|---------|
 | `src/index.ts` | PSK loading, directory creation, friendly download routes |
 | `src/routes/admin.ts` | Update file upload, yml generation, redirect mappings, static serving |
-| `src/db.ts` | Create database directory if missing |
+| `src/db.ts` | Create hub.db directory if missing |
+| `src/db-rooms.ts` | Create rooms.db directory if missing |
+| `src/db-tasks.ts` | Create tasks.db directory if missing |
+| `src/db-im.ts` | Create im.db directory if missing (NEW) |
 
 ## Purpose
 
-**Update distribution system** - serve application updates and installer files:
-- Store uploaded `.exe`, `.dmg`, `.zip`, `.yml`, `.blockmap` files
-- Auto-generate `latest.yml` for Windows and macOS
-- Create redirect mappings for external URLs
-- Serve static pages for landing pages
-- Load PSK from file if environment variable not set
-
-## File Types
+**Multi-purpose file system operations**:
+- **Update distribution**: Store and serve application updates
+- **Static content**: Public pages and redirect mappings
+- **Configuration**: PSK loading from file
+- **Database initialization**: Create database directories automatically (NEW: im.db)
 
 ### Update Files
 - `.exe` - Windows installer
@@ -88,3 +89,16 @@ const mtime = fs.statSync(path.join(updatesDir, f)).mtime;
 - Stored in `data/pages/`
 - Served at `/pages/*` (no auth required)
 - Usage: Landing pages, download pages
+
+### Database Directories (NEW)
+Each database class now creates its parent directory automatically:
+- `HubDB` → `data/hub.db`
+- `RoomDB` → `data/rooms.db`
+- `TaskDB` → `data/tasks.db`
+- `IMDB` → `data/im.db` (NEW)
+
+This ensures the server starts correctly even if the `data/` directory doesn't exist.
+
+## Changes in This Update
+
+**NEW**: `src/db-im.ts` now creates `data/im.db` directory automatically, matching the pattern of other database classes.

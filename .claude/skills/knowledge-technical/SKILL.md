@@ -2,8 +2,8 @@
 name: knowledge-technical
 description: "Technical architecture for sman-server. Verified against code."
 _scanned:
-  commitHash: 60687534e9e2a4acf2800a04840cf09048ff3dda
-  scannedAt: "2026-05-20T19:11:59Z"
+  commitHash: 312f64fbef5f2cd1acae067c829101d7e6203a92
+  scannedAt: "2026-05-21T19:18:18Z"
   branch: "master"
 ---
 

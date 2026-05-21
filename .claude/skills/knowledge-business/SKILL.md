@@ -2,14 +2,14 @@
 name: knowledge-business
 description: "Business knowledge for sman-server. Verified against code."
 _scanned:
-  commitHash: 60687534e9e2a4acf2800a04840cf09048ff3dda
-  scannedAt: "2026-05-20T19:11:59Z"
+  commitHash: 312f64fbef5f2cd1acae067c829101d7e6203a92
+  scannedAt: "2026-05-22T00:00:00Z"
   branch: "master"
 ---
 
 # Business Knowledge
 
-> 贡献者: nasakim | 验证时间: 2026-05-20
+> 贡献者: nasakim | 验证时间: 2026-05-22
 
 ## 核心定位
 > by nasakim | 验证: 2026-05
