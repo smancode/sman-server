@@ -62,6 +62,11 @@ export class RoomDB {
     try {
       this.db.exec(`ALTER TABLE rooms ADD COLUMN password TEXT`);
     } catch { /* column already exists */ }
+
+    // Migration: add workspace_name column to agents
+    try {
+      this.db.exec(`ALTER TABLE agents ADD COLUMN workspace_name TEXT`);
+    } catch { /* column already exists */ }
   }
 
   // ---- Room CRUD ----
@@ -199,13 +204,14 @@ export class RoomDB {
     workspace: string;
     capabilities: AgentCapabilities;
     maxConcurrent?: number;
+    workspaceName?: string;
   }): AgentRecord {
     const capsJson = JSON.stringify(params.capabilities);
     const now = new Date().toISOString();
 
     this.db.prepare(`
-      INSERT INTO agents (id, room_id, client_id, workspace, capabilities, status, max_concurrent, last_heartbeat)
-      VALUES (?, ?, ?, ?, ?, 'online', ?, ?)
+      INSERT INTO agents (id, room_id, client_id, workspace, capabilities, status, max_concurrent, last_heartbeat, workspace_name)
+      VALUES (?, ?, ?, ?, ?, 'online', ?, ?, ?)
       ON CONFLICT(id) DO UPDATE SET
         room_id = excluded.room_id,
         client_id = excluded.client_id,
@@ -213,8 +219,9 @@ export class RoomDB {
         capabilities = excluded.capabilities,
         status = 'online',
         max_concurrent = excluded.max_concurrent,
-        last_heartbeat = excluded.last_heartbeat
-    `).run(params.agentId, params.roomId, params.clientId, params.workspace, capsJson, params.maxConcurrent ?? 2, now);
+        last_heartbeat = excluded.last_heartbeat,
+        workspace_name = excluded.workspace_name
+    `).run(params.agentId, params.roomId, params.clientId, params.workspace, capsJson, params.maxConcurrent ?? 2, now, params.workspaceName ?? null);
 
     return this.getAgent(params.agentId)!;
   }

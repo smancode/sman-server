@@ -3,6 +3,7 @@ import type { Server } from 'node:http';
 import nodeCrypto from 'node:crypto';
 import { decrypt } from './crypto.js';
 import { RoomDB } from './db-rooms.js';
+import { IMDB } from './db-im.js';
 import type { WsMessage, WsAuthMessage, TaskStatus } from './types.js';
 import type { TaskEngine } from './task-engine.js';
 import { createTaskHandler } from './ws-task-handler.js';
@@ -16,19 +17,23 @@ interface AuthedClient {
 const AUTH_TIMEOUT_MS = 5000;
 const STALE_CHECK_INTERVAL_MS = 60_000;
 const STALE_THRESHOLD_MS = 90_000;
+const IM_CLEANUP_INTERVAL_MS = 60 * 60 * 1000; // 1 hour
 
 export class WsHub {
   private wss: WebSocketServer;
   private clients = new Map<WebSocket, AuthedClient>();
   private rooms = new Map<string, Set<WebSocket>>();
   private roomDB: RoomDB;
+  private imDB: IMDB;
   private psk: string;
   private staleCheckTimer: ReturnType<typeof setInterval> | null = null;
+  private imCleanupTimer: ReturnType<typeof setInterval> | null = null;
   private taskHandler: ReturnType<typeof createTaskHandler> | null = null;
   private taskEngine: TaskEngine | null = null;
 
-  constructor(server: Server, roomDB: RoomDB, psk: string, taskEngine?: TaskEngine) {
+  constructor(server: Server, roomDB: RoomDB, imDB: IMDB, psk: string, taskEngine?: TaskEngine) {
     this.roomDB = roomDB;
+    this.imDB = imDB;
     this.psk = psk;
     this.taskEngine = taskEngine ?? null;
     this.wss = new WebSocketServer({ server, path: '/ws' });
@@ -73,6 +78,13 @@ export class WsHub {
     this.staleCheckTimer = setInterval(() => {
       this.checkStaleAgents();
     }, STALE_CHECK_INTERVAL_MS);
+
+    this.imCleanupTimer = setInterval(() => {
+      const deleted = this.imDB.deleteOldMessages();
+      if (deleted > 0) {
+        console.log(`[IM] Cleaned up ${deleted} messages older than 7 days`);
+      }
+    }, IM_CLEANUP_INTERVAL_MS);
   }
 
   private handleAuth(ws: WebSocket, msg: WsAuthMessage): void {
@@ -168,6 +180,20 @@ export class WsHub {
       case 'agent.list':
         this.handleAgentList(client, msg);
         break;
+
+      // ---- IM handlers ----
+      case 'im.send':
+        this.handleImSend(client, msg);
+        break;
+      case 'im.sync':
+        this.handleImSync(client, msg);
+        break;
+      case 'im.agent_delta':
+      case 'im.presence':
+      case 'im.typing':
+        this.handleImTransparent(client, msg);
+        break;
+
       default:
         this.sendError(ws, `Unknown message type: ${msg.type}`);
     }
@@ -311,6 +337,7 @@ export class WsHub {
       workspace,
       capabilities,
       maxConcurrent: msg.maxConcurrent as number | undefined,
+      workspaceName: msg.workspaceName as string | undefined,
     });
 
     this.send(client.ws, { type: 'agent.registered', agent });
@@ -360,6 +387,54 @@ export class WsHub {
     }
     const agents = this.roomDB.getRoomAgents(roomId);
     this.send(client.ws, { type: 'agent.list.update', roomId, agents });
+  }
+
+  // ---- IM handlers ----
+
+  private handleImSend(client: AuthedClient, msg: WsMessage): void {
+    const roomId = msg.roomId as string;
+    const content = msg.content as string;
+    if (!roomId || !content) {
+      this.sendError(client.ws, 'roomId and content are required for im.send');
+      return;
+    }
+
+    const id = (msg.id as string) || nodeCrypto.randomUUID();
+    const timestamp = (msg.timestamp as number) || Date.now();
+
+    this.imDB.insertMessage({
+      id,
+      room_id: roomId,
+      sender: (msg.sender as string) || client.clientId,
+      content,
+      mentioned_agents: msg.mentionedAgents ? JSON.stringify(msg.mentionedAgents) : undefined,
+      quote_id: (msg.quoteId as string) || undefined,
+      type: (msg.type as string) || 'text',
+      status: (msg.status as string) || undefined,
+      attachments: msg.attachments ? JSON.stringify(msg.attachments) : undefined,
+      session_id: (msg.sessionId as string) || undefined,
+      timestamp,
+    });
+
+    this.broadcastToRoom(roomId, { ...msg, type: 'im.message', id, timestamp });
+  }
+
+  private handleImSync(client: AuthedClient, msg: WsMessage): void {
+    const roomId = msg.roomId as string;
+    if (!roomId) {
+      this.sendError(client.ws, 'roomId is required for im.sync');
+      return;
+    }
+    const afterTimestamp = (msg.afterTimestamp as number) || 0;
+    const messages = this.imDB.getMessagesAfter(roomId, afterTimestamp);
+    this.send(client.ws, { type: 'im.sync', data: { roomId, messages } });
+  }
+
+  private handleImTransparent(_client: AuthedClient, msg: WsMessage): void {
+    const roomId = msg.roomId as string;
+    if (roomId) {
+      this.broadcastToRoom(roomId, msg);
+    }
   }
 
   // ---- Helpers ----
@@ -439,6 +514,10 @@ export class WsHub {
     if (this.staleCheckTimer) {
       clearInterval(this.staleCheckTimer);
       this.staleCheckTimer = null;
+    }
+    if (this.imCleanupTimer) {
+      clearInterval(this.imCleanupTimer);
+      this.imCleanupTimer = null;
     }
     this.wss.close();
   }

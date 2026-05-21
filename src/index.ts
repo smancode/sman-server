@@ -7,6 +7,7 @@ import { fileURLToPath } from 'node:url';
 import { HubDB } from './db.js';
 import { RoomDB } from './db-rooms.js';
 import { TaskDB } from './db-tasks.js';
+import { IMDB } from './db-im.js';
 import { TaskEngine } from './task-engine.js';
 import { WsHub } from './ws-server.js';
 import { createReportRouter } from './routes/report.js';
@@ -49,6 +50,7 @@ fs.mkdirSync(pagesDir, { recursive: true });
 const db = new HubDB(path.join(DATA_DIR, 'hub.db'));
 const roomDB = new RoomDB(path.join(DATA_DIR, 'rooms.db'));
 const taskDB = new TaskDB(path.join(DATA_DIR, 'tasks.db'));
+const imDB = new IMDB(path.join(DATA_DIR, 'im.db'));
 const taskEngine = new TaskEngine(taskDB);
 
 // Skill auto-updater scheduler — pull model via report response
@@ -175,7 +177,7 @@ const server = app.listen(PORT, () => {
   skillScheduler.start();
 });
 
-const wsHub = new WsHub(server, roomDB, PSK, taskEngine);
+const wsHub = new WsHub(server, roomDB, imDB, PSK, taskEngine);
 
 // Hub API routes — registered after wsHub creation, before SPA fallback
 app.use('/api/hub', createHubApiRouter(roomDB, taskDB, PSK, taskEngine, db, wsHub));
@@ -259,6 +261,7 @@ process.on('SIGTERM', () => {
   server.close(() => {
     taskDB.close();
     roomDB.close();
+    imDB.close();
     db.close();
     process.exit(0);
   });
@@ -270,6 +273,7 @@ process.on('SIGINT', () => {
   server.close(() => {
     taskDB.close();
     roomDB.close();
+    imDB.close();
     db.close();
     process.exit(0);
   });
