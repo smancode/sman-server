@@ -192,7 +192,11 @@ export class WsHub {
       case 'im.agent_delta':
       case 'im.presence':
       case 'im.typing':
+      case 'im.room.dissolved':
         this.handleImTransparent(client, msg);
+        break;
+      case 'im.clients.search':
+        this.handleClientsSearch(client, msg);
         break;
 
       default:
@@ -446,6 +450,22 @@ export class WsHub {
       const encrypted = encryptIMMessage(msg as Record<string, unknown>, this.psk);
       this.broadcastToRoom(roomId, encrypted as WsMessage);
     }
+  }
+
+  private handleClientsSearch(client: AuthedClient, msg: WsMessage): void {
+    const query = ((msg.query as string) || '').toLowerCase();
+    const MAX_RESULTS = 20;
+    const results: { clientId: string }[] = [];
+    const seen = new Set<string>();
+    for (const [, c] of this.clients) {
+      if (results.length >= MAX_RESULTS) break;
+      if (seen.has(c.clientId)) continue;
+      seen.add(c.clientId);
+      if (!query || c.clientId.toLowerCase().includes(query)) {
+        results.push({ clientId: c.clientId });
+      }
+    }
+    this.send(client.ws, { type: 'im.clients.search', results, seq: msg.seq });
   }
 
   // ---- Helpers ----
