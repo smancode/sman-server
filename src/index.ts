@@ -10,6 +10,7 @@ import { TaskDB } from './db-tasks.js';
 import { IMDB } from './db-im.js';
 import { TaskEngine } from './task-engine.js';
 import { WsHub } from './ws-server.js';
+import { loadPsk } from './crypto.js';
 import { createReportRouter } from './routes/report.js';
 import { createBroadcastRouter } from './routes/broadcast.js';
 import { createAdminRouter } from './routes/admin.js';
@@ -22,18 +23,6 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PORT = parseInt(process.env.PORT || '5882', 10);
 const ADMIN_TOKEN = process.env.ADMIN_TOKEN;
 const DATA_DIR = path.resolve(process.cwd(), 'data');
-const KEY_FILE = path.resolve(process.cwd(), 'hub.key');
-
-function loadPsk(): string {
-  if (process.env.SMAN_PSK && process.env.SMAN_PSK.length === 32) return process.env.SMAN_PSK;
-  try {
-    const key = fs.readFileSync(KEY_FILE, 'utf-8').trim();
-    if (key.length === 32) return key;
-    console.error(`ERROR: hub.key must be exactly 32 characters, got ${key.length}`);
-  } catch {}
-  console.error('ERROR: PSK must be exactly 32 characters. Set SMAN_PSK env var or hub.key file');
-  process.exit(1);
-}
 
 const PSK = loadPsk();
 
