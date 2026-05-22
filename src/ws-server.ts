@@ -401,6 +401,7 @@ export class WsHub {
 
     const id = (msg.id as string) || nodeCrypto.randomUUID();
     const timestamp = (msg.timestamp as number) || Date.now();
+    const seq = (msg.seq as number) || 0;
 
     this.imDB.insertMessage({
       id,
@@ -414,9 +415,10 @@ export class WsHub {
       attachments: msg.attachments ? JSON.stringify(msg.attachments) : undefined,
       session_id: (msg.sessionId as string) || undefined,
       timestamp,
+      seq,
     });
 
-    this.broadcastToRoom(roomId, { ...msg, type: 'im.message', id, timestamp });
+    this.broadcastToRoom(roomId, { ...msg, type: 'im.message', id, timestamp, seq });
   }
 
   private handleImSync(client: AuthedClient, msg: WsMessage): void {

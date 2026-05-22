@@ -14,6 +14,7 @@ export interface IMMessageRow {
   attachments: string | null;
   session_id: string | null;
   timestamp: number;
+  seq: number;
   created_at: string;
 }
 
@@ -43,7 +44,18 @@ export class IMDB {
         timestamp INTEGER NOT NULL,
         created_at DATETIME DEFAULT (datetime('now', 'localtime'))
       );
+    `);
+
+    // seq migration
+    try {
+      this.db.exec('ALTER TABLE im_messages ADD COLUMN seq INTEGER DEFAULT 0');
+    } catch {
+      // Column already exists
+    }
+
+    this.db.exec(`
       CREATE INDEX IF NOT EXISTS idx_im_msg_room_ts ON im_messages(room_id, timestamp);
+      CREATE INDEX IF NOT EXISTS idx_im_msg_room_seq ON im_messages(room_id, seq);
     `);
   }
 
@@ -59,10 +71,11 @@ export class IMDB {
     attachments?: string;
     session_id?: string;
     timestamp: number;
+    seq?: number;
   }): void {
     this.db.prepare(`
-      INSERT OR IGNORE INTO im_messages (id, room_id, sender, content, mentioned_agents, quote_id, type, status, attachments, session_id, timestamp)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT OR IGNORE INTO im_messages (id, room_id, sender, content, mentioned_agents, quote_id, type, status, attachments, session_id, timestamp, seq)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       msg.id,
       msg.room_id,
@@ -75,6 +88,7 @@ export class IMDB {
       msg.attachments ?? null,
       msg.session_id ?? null,
       msg.timestamp,
+      msg.seq ?? 0,
     );
   }
 
