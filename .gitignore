@@ -8,3 +8,4 @@ deploy-private/
 .sman/paths/*/runs/
 .sman/paths/*/reports/
 .sman/paths/*/tmp/
+.sman/knowledge/
