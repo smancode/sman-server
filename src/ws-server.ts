@@ -1,7 +1,8 @@
 import { WebSocketServer, WebSocket } from 'ws';
 import type { Server } from 'node:http';
 import nodeCrypto from 'node:crypto';
-import { decrypt } from './crypto.js';
+import { decrypt, encrypt } from './crypto.js';
+import { decryptIMMessage, encryptIMMessage } from './im-crypto.js';
 import { RoomDB } from './db-rooms.js';
 import { IMDB } from './db-im.js';
 import type { WsMessage, WsAuthMessage, TaskStatus } from './types.js';
@@ -393,7 +394,9 @@ export class WsHub {
 
   private handleImSend(client: AuthedClient, msg: WsMessage): void {
     const roomId = msg.roomId as string;
-    const content = msg.content as string;
+    // Decrypt content from transmission
+    const decrypted = decryptIMMessage(msg as Record<string, unknown>, this.psk);
+    const content = decrypted.content as string;
     if (!roomId || !content) {
       this.sendError(client.ws, 'roomId and content are required for im.send');
       return;
@@ -403,6 +406,7 @@ export class WsHub {
     const timestamp = (msg.timestamp as number) || Date.now();
     const seq = (msg.seq as number) || 0;
 
+    // Store plaintext in DB
     this.imDB.insertMessage({
       id,
       room_id: roomId,
@@ -418,7 +422,9 @@ export class WsHub {
       seq,
     });
 
-    this.broadcastToRoom(roomId, { ...msg, type: 'im.message', id, timestamp, seq });
+    // Broadcast encrypted content to room
+    const broadcastMsg = encryptIMMessage({ ...msg, type: 'im.message', id, timestamp, seq, content } as Record<string, unknown>, this.psk);
+    this.broadcastToRoom(roomId, broadcastMsg as WsMessage);
   }
 
   private handleImSync(client: AuthedClient, msg: WsMessage): void {
@@ -429,13 +435,16 @@ export class WsHub {
     }
     const afterTimestamp = (msg.afterTimestamp as number) || 0;
     const messages = this.imDB.getMessagesAfter(roomId, afterTimestamp);
-    this.send(client.ws, { type: 'im.sync', data: { roomId, messages } });
+    // Encrypt message content for transmission
+    const encryptedMessages = messages.map(m => encryptIMMessage(m as unknown as Record<string, unknown>, this.psk));
+    this.send(client.ws, { type: 'im.sync', data: { roomId, messages: encryptedMessages } });
   }
 
   private handleImTransparent(_client: AuthedClient, msg: WsMessage): void {
     const roomId = msg.roomId as string;
     if (roomId) {
-      this.broadcastToRoom(roomId, msg);
+      const encrypted = encryptIMMessage(msg as Record<string, unknown>, this.psk);
+      this.broadcastToRoom(roomId, encrypted as WsMessage);
     }
   }
 
