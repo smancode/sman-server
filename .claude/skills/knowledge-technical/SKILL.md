@@ -2,14 +2,14 @@
 name: knowledge-technical
 description: "Technical architecture for sman-server. Verified against code."
 _scanned:
-  commitHash: 312f64fbef5f2cd1acae067c829101d7e6203a92
-  scannedAt: "2026-05-21T19:18:18Z"
+  commitHash: 5e4e0b43e7ba530e3efcd3e68e9814c38c250ae2
+  scannedAt: "2026-05-23T00:00:00.000Z"
   branch: "master"
 ---
 
 # Technical Architecture
 
-> 贡献者: nasakim | 验证时间: 2026-05-20
+> 贡献者: nasakim | 验证时间: 2026-05-23
 
 ## 技术栈
 > by nasakim | 验证: 2026-05
@@ -39,3 +39,29 @@ _scanned:
 - ARM64 开发机需切 x64 Node：`fnm use 22 --arch x64`
 - pnpm 符号链接需展开（Windows zip 解压权限问题）
 - 用 bestzip 非 tar（`tar -a` 生成 tar 格式，Windows 资源管理器无法直接打开）
+
+## sman-server 路由文件分布
+> by nasakim | 验证: 2026-05
+✅ [已验证] src/routes/:1-15
+- **`src/routes/admin.ts`**: 管理后台 API（Bearer token 认证）
+- **`src/routes/hub-api.ts`**: Hub 协作接口（房间内消息、任务分发、IM）
+- **`src/routes/rooms.ts`**: 房间管理（创建/加入/离开/解散房间，获取 agents）
+- **`src/routes/tasks.ts`**: 任务管理（创建/取消/停止/确认/拒绝/分发任务）
+- **`src/routes/report.ts`**: 客户端上报（使用数据、错误、反馈、成就上报及排行榜）
+- **`src/routes/broadcast.ts`**: 广播消息（获取广播、标记已读）
+
+## WebSocket 认证与连接约束
+> by nasakim | 验证: 2026-05
+✅ [已验证] src/ws-server.ts:L18-116, src/index.ts:L23
+- **连接配置**: 路径 `/ws`，认证超时 5 秒（AUTH_TIMEOUT_MS）
+- **认证流程**:
+  1. 连接后 5 秒内必须发送 `auth.psk` 消息
+  2. 消息包含加密 payload（含 clientId）和 timestamp
+  3. 服务端解密 payload，验证 timestamp 与服务器时间差 ≤ 5 分钟
+- **错误码**:
+  - `4001`: 认证超时（5 秒内未收到 `auth.psk`）
+  - `4002`: 未认证发送业务消息
+  - `4003`: Timestamp 过期（与服务器差超 5 分钟）
+  - `4004`: Payload 中缺少 clientId
+  - `4005`: PSK 解密失败
+- **默认端口**: 5882（可通过环境变量 PORT 覆盖）

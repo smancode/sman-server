@@ -2,14 +2,31 @@
 name: knowledge-business
 description: "Business knowledge for sman-server. Verified against code."
 _scanned:
-  commitHash: 312f64fbef5f2cd1acae067c829101d7e6203a92
-  scannedAt: "2026-05-22T00:00:00Z"
+  commitHash: 5e4e0b43e7ba530e3efcd3e68e9814c38c250ae2
+  scannedAt: "2026-05-22T19:10:39Z"
   branch: "master"
 ---
 
 # Business Knowledge
 
-> 贡献者: nasakim | 验证时间: 2026-05-22
+> 贡献者: nasakim | 验证时间: 2026-05-23
+
+## sman-server 项目定位
+> by nasakim | 验证: 2026-05
+✅ [已验证] package.json:L2, web/src/main.tsx:L1-L10
+- 项目名：`sman-server`，定位为 Sman 桌面应用的管理中心（管理 Hub）
+- 核心职责：加密使用报告收集、广播通知管理、应用更新分发
+- 包含 React 管理后台（位于 `web/` 目录，使用 React 19 + Vite 构建）
+
+## sman-server 对外接口架构
+> by nasakim | 验证: 2026-05
+✅ [已验证] src/index.ts:L140-L172, src/routes/*.ts
+- 共 60 个 HTTP 接口，分为两大类：
+  - **客户端接口**（27 个）：使用 `/api` 前缀，PSK 加密认证，供桌面客户端调用
+  - **管理接口**（33 个）：使用 `/admin` 前缀，Bearer Token 认证，供管理后台调用
+- 路由文件分类：
+  - 客户端：`report.ts`, `broadcast.ts`, `hub-api.ts`（挂载于 `/api` 和 `/api/hub`）
+  - 管理：`admin.ts`, `rooms.ts`, `tasks.ts`（挂载于 `/admin`）
 
 ## 核心定位
 > by nasakim | 验证: 2026-05

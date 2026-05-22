@@ -2,9 +2,9 @@
 name: project-apis
 description: API endpoint knowledge for sman-server. Contains all HTTP endpoints with signatures, parameters, business flows, and source references.
 _scanned:
-  commitHash: 312f64fbef5f2cd1acae067c829101d7e6203a92
-  scannedAt: 2026-05-21T19:16:04Z
-  branch: master
+  commitHash: 5e4e0b43e7ba530e3efcd3e68e9814c38c250ae2
+  scannedAt: "2026-05-22T19:08:21Z"
+  branch: "master"
 ---
 
 # API Endpoints
@@ -13,98 +13,231 @@ _scanned:
 
 | Method | Path | Description | Reference |
 |--------|------|-------------|-----------|
-| POST | /api/report | Submit encrypted client usage report | [POST-api-report.md](references/POST-api-report.md) |
-| POST | /api/error-report | Submit encrypted error report | [POST-api-error-report.md](references/POST-api-error-report.md) |
-| POST | /api/feedback | Submit user feedback with rate limit | [POST-api-feedback.md](references/POST-api-feedback.md) |
-| POST | /api/achievement-report | Upload achievement leaderboard score | [POST-api-achievement-report.md](references/POST-api-achievement-report.md) |
-| GET | /api/achievement-leaderboard | Get achievement rankings (public) | [GET-api-achievement-leaderboard.md](references/GET-api-achievement-leaderboard.md) |
+| POST | /api/report | Submit encrypted client usage report | `references/POST-api-report.md` |
+| POST | /api/error-report | Submit encrypted error report | `references/POST-api-error-report.md` |
+| POST | /api/feedback | Submit user feedback with rate limit | `references/POST-api-feedback.md` |
+| POST | /api/achievement-report | Upload achievement leaderboard score | `references/POST-api-achievement-report.md` |
+| GET | /api/achievement-leaderboard | Get achievement rankings (public) | `references/GET-api-achievement-leaderboard.md` |
 
 ## Broadcast API
 
 | Method | Path | Description | Reference |
 |--------|------|-------------|-----------|
-| POST | /api/broadcasts | Fetch new broadcasts since timestamp | [POST-api-broadcasts.md](references/POST-api-broadcasts.md) |
-| POST | /api/ack | Mark broadcasts as read | [POST-api-ack.md](references/POST-api-ack.md) |
+| POST | /api/broadcasts | Fetch new broadcasts since timestamp | `references/POST-api-broadcasts.md` |
+| POST | /api/ack | Mark broadcasts as read | `references/POST-api-ack.md` |
 
 ## Admin API
 
 | Method | Path | Description | Reference |
 |--------|------|-------------|-----------|
-| POST | /admin/broadcast | Create new broadcast | [POST-admin-broadcast.md](references/POST-admin-broadcast.md) |
-| GET | /admin/broadcasts | List all broadcasts | [GET-admin-broadcasts.md](references/GET-admin-broadcasts.md) |
-| DELETE | /admin/broadcast/:id | Soft delete broadcast | [DELETE-admin-broadcast-id.md](references/DELETE-admin-broadcast-id.md) |
-| GET | /admin/stats | Get hub statistics | [GET-admin-stats.md](references/GET-admin-stats.md) |
-| GET | /admin/clients | List all clients with workspaces | [GET-admin-clients.md](references/GET-admin-clients.md) |
-| PUT | /admin/upload | Upload update files (.yml, .dmg, .exe, .blockmap) | [PUT-admin-upload.md](references/PUT-admin-upload.md) |
-| POST | /admin/publish | Publish update with external URL | [POST-admin-publish.md](references/POST-admin-publish.md) |
-| GET | /admin/latest-yml | Get latest.yml for both platforms | [GET-admin-latest-yml.md](references/GET-admin-latest-yml.md) |
-| GET | /admin/stardom-dev-mode | Get Stardom dev mode status | [GET-admin-stardom-dev-mode.md](references/GET-admin-stardom-dev-mode.md) |
-| PUT | /admin/stardom-dev-mode | Toggle Stardom dev mode | [PUT-admin-stardom-dev-mode.md](references/PUT-admin-stardom-dev-mode.md) |
-| GET | /admin/hub-dev-mode | Get Hub dev mode status | [GET-admin-hub-dev-mode.md](references/GET-admin-hub-dev-mode.md) |
-| PUT | /admin/hub-dev-mode | Toggle Hub dev mode | [PUT-admin-hub-dev-mode.md](references/PUT-admin-hub-dev-mode.md) |
-| GET | /admin/error-reports | List error reports with limit | [GET-admin-error-reports.md](references/GET-admin-error-reports.md) |
-| DELETE | /admin/error-reports/:id | Delete error report | [DELETE-admin-error-reports-id.md](references/DELETE-admin-error-reports-id.md) |
-| GET | /admin/feedbacks | List feedbacks with limit | [GET-admin-feedbacks.md](references/GET-admin-feedbacks.md) |
-| DELETE | /admin/feedbacks/:id | Delete feedback | [DELETE-admin-feedbacks-id.md](references/DELETE-admin-feedbacks-id.md) |
-| GET | /admin/pageviews | Get page views by date | [GET-admin-pageviews.md](references/GET-admin-pageviews.md) |
-| GET | /admin/pageviews/ips | Get page view IPs with counts | [GET-admin-pageviews-ips.md](references/GET-admin-pageviews-ips.md) |
-| GET | /admin/downloads | Get download stats and logs | [GET-admin-downloads.md](references/GET-admin-downloads.md) |
-| GET | /admin/leaderboard | Get paginated achievement leaderboard | [GET-admin-leaderboard.md](references/GET-admin-leaderboard.md) |
+| POST | /admin/broadcast | Create new broadcast | `references/POST-admin-broadcast.md` |
+| GET | /admin/broadcasts | List all broadcasts | `references/GET-admin-broadcasts.md` |
+| DELETE | /admin/broadcast/:id | Soft delete broadcast | `references/DELETE-admin-broadcast-id.md` |
+| GET | /admin/stats | Get hub statistics | `references/GET-admin-stats.md` |
+| GET | /admin/clients | List all clients with workspaces | `references/GET-admin-clients.md` |
+| PUT | /admin/upload | Upload update files (.yml, .dmg, .exe, .blockmap) | `references/PUT-admin-upload.md` |
+| POST | /admin/publish | Publish update with external URL | `references/POST-admin-publish.md` |
+| GET | /admin/latest-yml | Get latest.yml for both platforms | `references/GET-admin-latest-yml.md` |
+| GET | /admin/stardom-dev-mode | Get Stardom dev mode status | `references/GET-admin-stardom-dev-mode.md` |
+| PUT | /admin/stardom-dev-mode | Toggle Stardom dev mode | `references/PUT-admin-stardom-dev-mode.md` |
+| GET | /admin/hub-dev-mode | Get Hub dev mode status | `references/GET-admin-hub-dev-mode.md` |
+| PUT | /admin/hub-dev-mode | Toggle Hub dev mode | `references/PUT-admin-hub-dev-mode.md` |
+| GET | /admin/error-reports | List error reports with limit | `references/GET-admin-error-reports.md` |
+| DELETE | /admin/error-reports/:id | Delete error report | `references/DELETE-admin-error-reports-id.md` |
+| GET | /admin/feedbacks | List feedbacks with limit | `references/GET-admin-feedbacks.md` |
+| DELETE | /admin/feedbacks/:id | Delete feedback | `references/DELETE-admin-feedbacks-id.md` |
+| GET | /admin/pageviews | Get page views by date | `references/GET-admin-pageviews.md` |
+| GET | /admin/pageviews/ips | Get page view IPs with counts | `references/GET-admin-pageviews-ips.md` |
+| GET | /admin/downloads | Get download stats and logs | `references/GET-admin-downloads.md` |
+| GET | /admin/leaderboard | Get paginated achievement leaderboard | `references/GET-admin-leaderboard.md` |
 
-## Hub API
+## Rooms API (Admin)
 
 | Method | Path | Description | Reference |
 |--------|------|-------------|-----------|
-| POST | /api/hub/stardom-dev-mode | Get Stardom dev mode status (encrypted) | [POST-api-hub-stardom-dev-mode.md](references/POST-api-hub-stardom-dev-mode.md) |
-| POST | /api/hub/hub-dev-mode | Get Hub dev mode status (encrypted) | [POST-api-hub-hub-dev-mode.md](references/POST-api-hub-hub-dev-mode.md) |
+| GET | /admin/rooms | List all rooms with member counts | `references/GET-admin-rooms.md` |
+| GET | /admin/rooms/:id | Get room details with members and agents | `references/GET-admin-rooms-id.md` |
+| POST | /admin/rooms | Create new room | `references/POST-admin-rooms.md` |
+| POST | /admin/rooms/:id/join | Join a room | `references/POST-admin-rooms-id-join.md` |
+| POST | /admin/rooms/:id/leave | Leave a room | `references/POST-admin-rooms-id-leave.md` |
+| DELETE | /admin/rooms/:id | Deactivate a room | `references/DELETE-admin-rooms-id.md` |
+| GET | /admin/agents | List all agents across all rooms | `references/GET-admin-agents.md` |
+
+## Tasks API (Admin)
+
+| Method | Path | Description | Reference |
+|--------|------|-------------|-----------|
+| GET | /admin/tasks | List tasks by room/status | `references/GET-admin-tasks.md` |
+| GET | /admin/tasks/:id | Get task details with events | `references/GET-admin-tasks-id.md` |
+| GET | /admin/tasks/:id/events | Get task events | `references/GET-admin-tasks-id-events.md` |
+| GET | /admin/rooms/:roomId/task-stats | Get task statistics for room | `references/GET-admin-rooms-roomid-task-stats.md` |
+| POST | /admin/tasks | Create new task | `references/POST-admin-tasks.md` |
+| POST | /admin/tasks/:id/cancel | Cancel a task | `references/POST-admin-tasks-id-cancel.md` |
+
+## Hub API (Encrypted)
+
+All endpoints use PSK encryption with replay protection (5-min window).
+
+| Method | Path | Description | Reference |
+|--------|------|-------------|-----------|
+| POST | /api/hub/rooms | List or create rooms | `references/POST-api-hub-rooms.md` |
+| POST | /api/hub/rooms/:id | Get room details | `references/POST-api-hub-rooms-id.md` |
+| POST | /api/hub/rooms/:id/join | Join room with optional password | `references/POST-api-hub-rooms-id-join.md` |
+| POST | /api/hub/rooms/:id/leave | Leave room | `references/POST-api-hub-rooms-id-leave.md` |
+| POST | /api/hub/rooms/:id/agents | List room agents | `references/POST-api-hub-rooms-id-agents.md` |
+| POST | /api/hub/rooms/:id/dissolve | Dissolve room (owner only) | `references/POST-api-hub-rooms-id-dissolve.md` |
+| POST | /api/hub/agents | List all agents | `references/POST-api-hub-agents.md` |
+| POST | /api/hub/tasks | List or create tasks | `references/POST-api-hub-tasks.md` |
+| POST | /api/hub/tasks/:id | Get task details | `references/POST-api-hub-tasks-id.md` |
+| POST | /api/hub/tasks/:id/cancel | Cancel task | `references/POST-api-hub-tasks-id-cancel.md` |
+| POST | /api/hub/tasks/:id/stop | Stop running task | `references/POST-api-hub-tasks-id-stop.md` |
+| POST | /api/hub/tasks/:id/confirm | Confirm task for dispatch | `references/POST-api-hub-tasks-id-confirm.md` |
+| POST | /api/hub/tasks/:id/reject | Reject task | `references/POST-api-hub-tasks-id-reject.md` |
+| POST | /api/hub/tasks/:id/dispatch | Dispatch task to agents | `references/POST-api-hub-tasks-id-dispatch.md` |
+| POST | /api/hub/evaluations | List evaluations | `references/POST-api-hub-evaluations.md` |
+| POST | /api/hub/evaluations/submit | Submit evaluation | `references/POST-api-hub-evaluations-submit.md` |
+| POST | /api/hub/evaluations/:id/approve | Approve evaluation | `references/POST-api-hub-evaluations-id-approve.md` |
+| POST | /api/hub/evaluations/:id/reject | Reject evaluation | `references/POST-api-hub-evaluations-id-reject.md` |
+| POST | /api/hub/stardom-dev-mode | Get Stardom dev mode | `references/POST-api-hub-stardom-dev-mode.md` |
+| POST | /api/hub/hub-dev-mode | Get Hub dev mode | `references/POST-api-hub-hub-dev-mode.md` |
 
 ## Public API
 
 | Method | Path | Description | Reference |
 |--------|------|-------------|-----------|
-| GET | /health | Health check endpoint | [GET-health.md](references/GET-health.md) |
-| GET | /api/health | Health check endpoint | [GET-api-health.md](references/GET-api-health.md) |
-| POST | /api/pageview | Record public page view | [POST-api-pageview.md](references/POST-api-pageview.md) |
-| GET | /download/:filename | Download update file with redirect support | [GET-download-filename.md](references/GET-download-filename.md) |
-| GET | /updates/sman/:filename | Download update file (legacy path) | [GET-updates-sman-filename.md](references/GET-updates-sman-filename.md) |
-| GET | /download/windows-x64 | Windows friendly download redirect | [GET-download-windows-x64.md](references/GET-download-windows-x64.md) |
-| GET | /download/macos-arm | macOS ARM friendly download redirect | [GET-download-macos-arm.md](references/GET-download-macos-arm.md) |
+| GET | /health | Health check endpoint | `references/GET-health.md` |
+| GET | /api/health | Health check endpoint | `references/GET-api-health.md` |
+| POST | /api/pageview | Record public page view | `references/POST-api-pageview.md` |
+| GET | /download/:filename | Download update file with redirect support | `references/GET-download-filename.md` |
+| GET | /updates/sman/:filename | Download update file (legacy path) | `references/GET-updates-sman-filename.md` |
+| GET | /download/windows-x64 | Windows friendly download redirect | `references/GET-download-windows-x64.md` |
+| GET | /download/macos-arm | macOS ARM friendly download redirect | `references/GET-download-macos-arm.md` |
 
 ## WebSocket API
 
+**Connection**: `ws://host/ws` with 5-second auth timeout.
+
+**Message Types**:
+
 | Message Type | Direction | Description | Reference |
 |--------------|-----------|-------------|-----------|
-| auth.psk | Client → Server | Authenticate WebSocket connection with PSK | [WS-auth-psk.md](references/WS-auth-psk.md) |
-| agent.register | Client → Server | Register agent in a room with capabilities | [WS-agent-register.md](references/WS-agent-register.md) |
-| agent.unregister | Client → Server | Unregister agent from room | [WS-agent-unregister.md](references/WS-agent-unregister.md) |
-| agent.heartbeat | Client → Server | Update agent heartbeat timestamp | [WS-agent-heartbeat.md](references/WS-agent-heartbeat.md) |
-| agent.list | Client → Server | List all agents in a room | [WS-agent-list.md](references/WS-agent-list.md) |
-| agent.registered | Server → Client | Confirm agent registration with agent ID | [WS-agent-registered.md](references/WS-agent-registered.md) |
-| agent.list.update | Server → Client | Broadcast agent list updates for room | [WS-agent-list-update.md](references/WS-agent-list-update.md) |
-| im.send | Client → Server | Send IM message to room | [WS-im-send.md](references/WS-im-send.md) |
-| im.sync | Client → Server | Request IM message sync since timestamp | [WS-im-sync.md](references/WS-im-sync.md) |
-| im.message | Server → Client | Broadcast IM message to room | [WS-im-message.md](references/WS-im-message.md) |
-| im.agent_delta | Client → Server → Client | Transparent forward agent presence delta | [WS-im-agent-delta.md](references/WS-im-agent-delta.md) |
-| im.presence | Client → Server → Client | Transparent forward presence status | [WS-im-presence.md](references/WS-im-presence.md) |
-| im.typing | Client → Server → Client | Transparent forward typing indicator | [WS-im-typing.md](references/WS-im-typing.md) |
-| error | Server → Client | Error response for any failed operation | [WS-error.md](references/WS-error.md) |
+| auth.psk | Client → Server | Authenticate WebSocket connection with PSK | `references/WS-auth-psk.md` |
+| auth.ok | Server → Client | Authentication success | `references/WS-auth-ok.md` |
 
-## Summary of Changes (v6068753 → v312f64f)
+### Room Management
 
-### New WebSocket IM Feature
-**Purpose**: Enable real-time instant messaging between agents in rooms with message persistence and sync.
+| Message Type | Direction | Description | Reference |
+|--------------|-----------|-------------|-----------|
+| room.create | Client → Server | Create new room | `references/WS-room-create.md` |
+| room.created | Server → Client | Room creation confirmation | `references/WS-room-created.md` |
+| room.join | Client → Server | Join a room | `references/WS-room-join.md` |
+| room.joined | Server → Client | Join confirmation | `references/WS-room-joined.md` |
+| room.leave | Client → Server | Leave a room | `references/WS-room-leave.md` |
+| room.left | Server → Client | Leave confirmation | `references/WS-room-left.md` |
+| room.list | Client → Server | List visible rooms | `references/WS-room-list.md` |
+| room.list.update | Server → Client | Room list update | `references/WS-room-list-update.md` |
+| room.dissolve | Client → Server | Dissolve a room (owner only) | `references/WS-room-dissolve.md` |
+| room.dissolved | Server → Client | Room dissolved notification | `references/WS-room-dissolved.md` |
+| room.info | Client → Server | Get room details | `references/WS-room-info.md` |
+| room.info.update | Server → Client | Room info update | `references/WS-room-info-update.md` |
+| room.member.joined | Server → Client | Member joined broadcast | `references/WS-room-member-joined.md` |
+| room.member.left | Server → Client | Member left broadcast | `references/WS-room-member-left.md` |
 
-**Changes**:
-- Added `IMDB` class (`src/db-im.ts`) for message storage with 7-day retention
-- Added 3 IM message handlers to `WsHub`:
-  - `im.send` - Store and broadcast messages (supports quotes, mentions, attachments)
-  - `im.sync` - Fetch messages after timestamp with 200-message limit
-  - Transparent forwarding for `im.agent_delta`, `im.presence`, `im.typing`
-- Background cleanup job deletes messages older than 7 days (hourly interval)
+### Agent Management
+
+| Message Type | Direction | Description | Reference |
+|--------------|-----------|-------------|-----------|
+| agent.register | Client → Server | Register agent in room | `references/WS-agent-register.md` |
+| agent.registered | Server → Client | Agent registration confirmation | `references/WS-agent-registered.md` |
+| agent.unregister | Client → Server | Unregister agent | `references/WS-agent-unregister.md` |
+| agent.deregistered | Server → Client | Agent deregistered confirmation | `references/WS-agent-deregistered.md` |
+| agent.heartbeat | Client → Server | Update agent heartbeat | `references/WS-agent-heartbeat.md` |
+| agent.list | Client → Server | List room agents | `references/WS-agent-list.md` |
+| agent.list.update | Server → Client | Agent list update | `references/WS-agent-list-update.md` |
+| agent.online | Server → Client | Agent came online | `references/WS-agent-online.md` |
+| agent.offline | Server → Client | Agent went offline | `references/WS-agent-offline.md` |
+
+### Instant Messaging
+
+| Message Type | Direction | Description | Reference |
+|--------------|-----------|-------------|-----------|
+| im.send | Client → Server | Send IM message (encrypted payload) | `references/WS-im-send.md` |
+| im.sync | Client → Server | Request message sync since timestamp | `references/WS-im-sync.md` |
+| im.message | Server → Client | Broadcast IM message (encrypted) | `references/WS-im-message.md` |
+| im.agent_delta | Bidirectional | Agent presence delta (transparent) | `references/WS-im-agent-delta.md` |
+| im.presence | Bidirectional | Presence status (transparent) | `references/WS-im-presence.md` |
+| im.typing | Bidirectional | Typing indicator (transparent) | `references/WS-im-typing.md` |
+| im.room.dissolved | Bidirectional | Room dissolved notification | `references/WS-im-room-dissolved.md` |
+| im.clients.search | Client → Server | Search online clients | `references/WS-im-clients-search.md` |
+
+### Task System
+
+| Message Type | Direction | Description | Reference |
+|--------------|-----------|-------------|-----------|
+| task.* | Bidirectional | Task lifecycle messages | `references/WS-task-system.md` |
+| evaluation.* | Bidirectional | Evaluation messages | `references/WS-evaluation-system.md` |
+
+### Error Handling
+
+| Message Type | Direction | Description | Reference |
+|--------------|-----------|-------------|-----------|
+| error | Server → Client | Error response | `references/WS-error.md` |
+
+**Close Codes**:
+- 4001: Auth timeout
+- 4002: Not authenticated
+- 4003: Timestamp expired
+- 4004: Invalid payload
+- 4005: Auth failed
+
+## Summary of Changes (Since 312f64fb)
+
+### New Features
+
+#### IM Message Encryption
+**Impact**: Enhanced security for IM content transmission.
+- Added `im-crypto.ts` with `encryptIMMessage()` and `decryptIMMessage()` functions
+- IM message content now encrypted in WebSocket transmission using PSK
+- Plaintext stored in database for querying, encrypted for wire transfer
+
+#### IM Message Sequence Numbering
+**Impact**: Improved message ordering and sync reliability.
+- Added `seq INTEGER` column to `im_messages` table
+- Added index `idx_im_msg_room_seq` for efficient sequence-based queries
+- Migration handled automatically in `db-im.ts`
+
+#### Client Search Capability
+**Impact**: Enable agents to discover and connect with other online clients.
+- Added `im.clients.search` WebSocket message type
+- Returns list of online clients matching query (max 20 results)
+- Searches by clientId with case-insensitive matching
 
 ### Database Schema Changes
-**Breaking**: Added `workspace_name` column to `agents` table in `db-rooms.ts` (migration on startup)
+
+| Table | Change | Migration |
+|-------|--------|-----------|
+| `im_messages` | Added `seq INTEGER` column | ⚠️ MIGRATION (handled) |
+| `achievement_leaderboard` | Added `dimension_scores TEXT` column | ⚠️ MIGRATION (handled) |
+
+### Code Refactoring
+
+#### PSK Loading Extraction
+**Impact**: Improved code organization and reusability.
+- Extracted PSK loading logic from `index.ts` to `crypto.ts`
+- Added `loadPSK()` function with validation
+- Centralized PSK version handling
 
 ### Endpoint Counts
-- **HTTP endpoints**: 36 (no change)
-- **WebSocket message types**: 17 (added 7 IM-related messages)
+
+- **HTTP endpoints**: 60 (no change from previous version)
+- **WebSocket message types**: 39 (added 1 new: `im.clients.search`)
+
+### Breaking Changes
+
+None - all changes are backward compatible with proper migration handling.
+
+### Migration Requirements
+
+All migrations are handled automatically via try-catch blocks in database initialization:
+- `im_messages.seq` column added in `src/db-im.ts`
+- `achievement_leaderboard.dimension_scores` column added in `src/db.ts`

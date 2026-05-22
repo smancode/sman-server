@@ -50,7 +50,7 @@ for (const client of rooms.get(room) || []) {
 
 | File | Purpose |
 |------|---------|
-| `src/ws-server.ts` | WsHub class managing WebSocket connections, auth, rooms, IM, tasks |
+| `src/ws-server.ts` | WsHub class managing WebSocket connections, auth, rooms, IM, tasks, client search |
 | `src/ws-task-handler.ts` | Task-related WebSocket message handling |
 | `src/index.ts` | Creates WsHub instance and attaches to HTTP server |
 
@@ -60,10 +60,11 @@ for (const client of rooms.get(room) || []) {
 - Authenticated connections (PSK-based)
 - Room-based pub/sub for workspace collaboration
 - Task status updates and broadcasts
-- **NEW**: Instant messaging with sync and presence
-- **NEW**: Agent typing indicators and presence broadcasts
+- **Instant messaging with encryption and sync**
+- **Agent typing indicators and presence broadcasts**
+- **Client search and discovery** (NEW)
 - Stale connection cleanup (90-second timeout)
-- **NEW**: Automatic IM message cleanup (7-day retention)
+- Automatic IM message cleanup (7-day retention)
 
 ## Authentication Flow
 
@@ -94,12 +95,13 @@ for (const client of rooms.get(room) || []) {
 - `agent.heartbeat` - Update agent heartbeat and status
 - `agent.list` - List agents in room
 
-**Instant Messaging (NEW)**
-- `im.send` - Send message to room (with optional quote, mentions, attachments)
-- `im.sync` - Sync messages after timestamp
-- `im.agent_delta` - Agent list change notification (transparent)
-- `im.presence` - User presence notification (transparent)
-- `im.typing` - Typing indicator (transparent)
+**Instant Messaging**
+- `im.send` - Send encrypted message to room (with quote, mentions, attachments, seq)
+- `im.sync` - Sync encrypted messages after timestamp
+- `im.agent_delta` - Agent list change notification (transparent, encrypted)
+- `im.presence` - User presence notification (transparent, encrypted)
+- `im.typing` - Typing indicator (transparent, encrypted)
+- `im.clients.search` - Search connected clients (NEW - commit 5e4e0b4)
 
 **Task Management**
 - `task.*` - Task-related messages (handled by ws-task-handler)
@@ -128,28 +130,52 @@ for (const client of rooms.get(room) || []) {
 - `agent.offline` - Agent went offline
 - `agent.list.update` - Agent list update
 
-**Instant Messaging (NEW)**
-- `im.message` - New message broadcast to room
-- `im.sync` - Message sync response with messages array
+**Instant Messaging**
+- `im.message` - New encrypted message broadcast to room
+- `im.sync` - Message sync response with encrypted messages array
+- `im.clients.search` - Client search results (NEW - commit 5e4e0b4)
 
-## IM Feature (NEW)
+## IM Feature
 
-**Purpose**: Real-time instant messaging within rooms
+**Purpose**: Real-time encrypted instant messaging within rooms
+
+**Message Encryption** (NEW - commit ef4576e):
+- Content and attachments encrypted via `im-crypto.ts`
+- Encryption format: `enc:` + base64(AES-256-GCM payload)
+- Automatic decryption on receive, encryption on send/broadcast
+- Backward compatible with plaintext messages
 
 **Message Storage**:
 - Messages stored in `im.db` via IMDB class
 - Automatic cleanup of messages older than 7 days
 - Supports quotes, mentions, attachments, session tracking
+- **Sequence numbers** for ordering and deduplication (NEW - commit 6d235fa)
 
 **Message Sync**:
-- `im.sync` returns messages after specified timestamp
+- `im.sync` returns encrypted messages after specified timestamp
 - Default limit: 200 messages
 - Ordered by timestamp ascending
+- Messages include `seq` field for client-side ordering
 
 **Transparent Messages** (passed through without database storage):
-- `im.agent_delta` - Agent list changes
-- `im.presence` - User presence updates
-- `im.typing` - Typing indicators
+- `im.agent_delta` - Agent list changes (encrypted)
+- `im.presence` - User presence updates (encrypted)
+- `im.typing` - Typing indicators (encrypted)
+
+## Client Search Feature (NEW - commit 5e4e0b4)
+
+**Purpose**: Real-time client discovery and presence
+
+**Message**: `im.clients.search`
+**Parameters**: `{ query: string, seq: number }`
+**Response**: `{ type: 'im.clients.search', results: [{ clientId }], seq }`
+
+**Search Logic**:
+- Case-insensitive substring match on `clientId`
+- Searches all connected WebSocket clients
+- Returns max 20 results
+- Deduplicates clients with multiple connections
+- Use case: Find users to invite to rooms or direct messaging
 
 ## Stale Connection Cleanup
 
@@ -157,7 +183,7 @@ for (const client of rooms.get(room) || []) {
 - **Threshold**: 90 seconds of inactivity
 - **Action**: Mark agents as offline, broadcast offline events
 
-## IM Cleanup (NEW)
+## IM Cleanup
 
 - **Interval**: 1 hour (3600000 ms)
 - **Retention**: 7 days
@@ -176,3 +202,22 @@ process.on('SIGTERM', () => {
   });
 });
 ```
+
+## Breaking Changes
+
+### IM Message Encryption (commit ef4576e)
+- **Before**: IM messages in plaintext
+- **After**: IM messages encrypted with `enc:` prefix
+- **Impact**: Clients must support decryption of `enc:` prefixed content
+- **Backward Compatible**: Non-encrypted fields pass through unchanged
+
+### Message Sequence Numbers (commit 6d235fa)
+- **Before**: Messages ordered by timestamp only
+- **After**: Messages have explicit `seq` field
+- **Database**: Automatic migration (ALTER TABLE with default value 0)
+- **Index**: New `idx_im_msg_room_seq` index for efficient queries
+
+### Client Search Feature (commit 5e4e0b4)
+- **New Message Type**: `im.clients.search`
+- **Use Case**: Client discovery for invitations and direct messaging
+- **Max Results**: 20 clients per search

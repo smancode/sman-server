@@ -1,9 +1,9 @@
 ---
 name: project-external-calls
-description: External dependency knowledge for sman-server. Contains local system calls (database, file system, crypto) with call methods, config sources, and usage locations.
+description: External dependency knowledge for sman-server. Contains local system calls (database, file system, crypto, WebSocket) with call methods, config sources, and usage locations.
 _scanned:
-  commitHash: 312f64fbef5f2cd1acae067c829101d7e6203a92
-  scannedAt: 2026-05-22T00:00:00Z
+  commitHash: 5e4e0b43e7ba530e3efcd3e68e9814c38c250ae2
+  scannedAt: "2026-05-22T19:09:00Z"
   branch: master
 ---
 
@@ -14,6 +14,93 @@ _scanned:
 | Service | Type | Purpose | Reference |
 |---------|------|---------|-----------|
 | better-sqlite3 | SQLite Database | Persistent storage for clients, reports, broadcasts, settings, error reports, feedback, analytics, achievement leaderboard, IM messages, room management, task management | [better-sqlite3.md](references/better-sqlite3.md) |
-| node:crypto | Cryptographic Operations | AES-256-GCM encryption/decryption for client communication, UUID generation for rooms and IM messages | [node-crypto.md](references/node-crypto.md) |
-| node:fs | File System | Update file serving, redirect mappings, static pages, PSK loading, database directory creation | [node-fs.md](references/node-fs.md) |
-| ws (WebSocket) | Real-time Communication | Desktop client connections, room subscriptions, task broadcasts, instant messaging, agent presence | [ws-websocket.md](references/ws-websocket.md) |
+| node:crypto | Cryptographic Operations | AES-256-GCM encryption/decryption for client communication, UUID generation for rooms and IM messages, PSK loading and validation, IM message encryption | [node-crypto.md](references/node-crypto.md) |
+| node:fs | File System | Update file serving, redirect mappings, static pages, PSK loading from `data/hub.key`, database directory creation | [node-fs.md](references/node-fs.md) |
+| ws (WebSocket) | Real-time Communication | Desktop client connections, room subscriptions, task broadcasts, instant messaging with encryption, agent presence, client search | [ws-websocket.md](references/ws-websocket.md) |
+
+## ⚠️ Breaking Changes
+
+### PSK Loading (commit 6f685b9)
+- **New Function**: `loadPsk()` in `src/crypto.ts`
+- **Environment Variable**: `SMAN_PSK` (32-character key)
+- **File Location**: `data/hub.key` (fallback if env var not set)
+- **Caching**: PSK cached in-memory after first load
+- **Error Handling**: Process exits if PSK not found or invalid length
+
+### IM Message Encryption (commit ef4576e)
+- **New Module**: `src/im-crypto.ts`
+- **New Functions**:
+  - `encryptField(plaintext, psk)` - Encrypt single field
+  - `decryptField(ciphertext, psk)` - Decrypt single field
+  - `encryptIMMessage(msg, psk)` - Encrypt message content and attachments
+  - `decryptIMMessage(msg, psk)` - Decrypt message content and attachments
+- **Encryption Format**: `enc:` + base64(AES-256-GCM encrypted payload)
+- **Backward Compatible**: Non-encrypted fields pass through unchanged
+
+### Enhanced WebSocket Features (commit 5e4e0b4)
+- **New Message Type**: `im.clients.search` for client discovery
+- **Search Logic**: Case-insensitive substring match on `clientId`
+- **Max Results**: 20 clients per search
+- **Use Case**: Real-time client presence and discovery
+
+## Integration Points
+
+### Crypto Module (`src/crypto.ts`)
+```typescript
+import { loadPsk, encrypt, decrypt } from './crypto.js';
+
+// Load PSK from environment or file
+const PSK = loadPsk();
+
+// Encrypt/decrypt data
+const encrypted = encrypt(data, PSK);
+const decrypted = decrypt(encrypted, PSK);
+```
+
+### IM Crypto Module (`src/im-crypto.ts`)
+```typescript
+import { encryptIMMessage, decryptIMMessage } from './im-crypto.js';
+
+// Encrypt message for transmission
+const encryptedMsg = encryptIMMessage({ content: "hello", attachments: "..." }, PSK);
+
+// Decrypt received message
+const decryptedMsg = decryptIMMessage(receivedMsg, PSK);
+```
+
+### WebSocket Server (`src/ws-server.ts`)
+```typescript
+// All IM messages are encrypted/decrypted automatically
+handleImSend(client, msg) {
+  const decrypted = decryptIMMessage(msg, this.psk);
+  // Store decrypted content in DB
+  this.imDB.insertMessage({ content: decrypted.content, ... });
+
+  // Broadcast encrypted content
+  const encrypted = encryptIMMessage({ ...msg, content }, this.psk);
+  this.broadcastToRoom(roomId, encrypted);
+}
+```
+
+## Configuration Sources
+
+### PSK Configuration
+1. **Environment Variable**: `SMAN_PSK` (32 characters)
+2. **File**: `data/hub.key` (32 characters, trimmed)
+3. **Priority**: Env var > file
+4. **Error**: Process exits if neither found or invalid length
+
+### Database Files
+- `data/hub.db` - HubDB (clients, reports, broadcasts)
+- `data/rooms.db` - RoomDB (rooms, members, agents)
+- `data/tasks.db` - TaskDB (tasks, assignments, evaluations)
+- `data/im.db` - IMDB (instant messages)
+
+## Key Patterns
+
+- **Encryption**: All client communication and IM messages encrypted via AES-256-GCM
+- **PSK Caching**: PSK loaded once and cached in-memory
+- **IM Encryption**: Content and attachments encrypted with `enc:` prefix
+- **Transparent Routing**: Some IM messages (presence, typing) bypass storage
+- **Automatic Cleanup**: IM messages deleted after 7 days
+- **Message Sequencing**: IM messages have `seq` field for ordering

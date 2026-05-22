@@ -53,6 +53,28 @@ initializedAt: "2026-05-19T01:25:17.622Z"
 - 数据库: 新增 4 张表（im_messages, rooms, room_members, agents 扩展）
 - 架构: 第 4 个数据库（data/im.db），独立于主 hub DB
 
+### 2026-05-23T00:00:00Z (Commit: 5e4e0b43)
+**Mode:** 增量更新
+
+**Project Knowledge Skills 更新:**
+- ✅ project-structure: 新增 IM 加密模块（im-crypto.ts）、PSK 加载重构、客户端搜索功能
+- ✅ project-apis: 新增 1 个 WebSocket 消息类型（im.clients.search），总计 60 个 HTTP 端点、39 个 WebSocket 消息
+- ✅ project-external-calls: 增强 IM 消息加密、PSK 环境变量支持、WebSocket 客户端发现
+- ✅ database-schema: 表数保持 19 张，im_messages 表新增 seq 列（消息排序）、achievement_leaderboard 新增 dimension_scores 列
+
+**Team Knowledge 聚合:**
+- ✅ knowledge-business: 验证 2 条（全部已验证）
+- ✅ knowledge-conventions: 验证 1 条（前端卡片组件约定，已验证）
+- ✅ knowledge-technical: 验证 2 条（路由分布、WebSocket 认证，已验证）
+
+**关键变更:**
+- 🔴 BREAKING: PSK 加载逻辑从 index.ts 内联重构为 crypto.ts 的 loadPsk() 函数，支持环境变量 SMAN_PSK
+- 🔴 BREAKING: IM 消息新增加密传输（enc: 前缀），向后兼容未加密消息
+- ⚠️ MIGRATION: im_messages 表新增 seq 列（自动迁移，默认值为 0）
+- ⚠️ MIGRATION: achievement_leaderboard 表新增 dimension_scores 列（自动迁移）
+- 新增: WebSocket 客户端搜索功能（im.clients.search），支持大小写不敏感的 clientId 子串搜索
+- 优化: IM 消息同步改进，基于序列号排序提升可靠性
+
 ### 2026-05-20T19:12:54Z (Commit: 60687534)
 **Mode:** 增量更新
 

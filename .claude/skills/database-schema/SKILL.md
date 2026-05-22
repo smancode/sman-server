@@ -1,116 +1,111 @@
 ---
 name: database-schema
 description: Database schema knowledge for sman-server: table structures, relationships, indexes, and DDL
-commitHash: 312f64fbef5f2cd1acae067c829101d7e6203a92
-scannedAt: 2026-05-22T00:00:00Z
-branch: master
+_scanned:
+  commitHash: 5e4e0b43e7ba530e3efcd3e68e9814c38c250ae2
+  scannedAt: "2026-05-22T19:08:21Z"
+  branch: "master"
 ---
 
-# Sman-Server Database Schema
+# Database Schema Knowledge
+
+Database schema knowledge for sman-server: table structures, relationships, indexes, and DDL.
 
 ## Database Overview
-- **Engine**: better-sqlite3 (synchronous Node.js bindings)
-- **Mode**: WAL (Write-Ahead Logging) for concurrency
-- **Location**: `data/hub.db` (created on startup if missing)
-- **Architecture**: No ORM, raw SQL with prepared statements
-- **Total Tables**: 19 tables
+
+- **Engine**: better-sqlite3 (WAL mode enabled)
+- **Database Files**:
+  - `data/hub.db` - Main hub database (HubDB)
+  - `data/rooms.db` - Room and agent management (RoomDB)
+  - `data/im.db` - Instant messaging (IMDB)
+  - `data/tasks.db` - Task execution tracking (TaskDB)
+- **Table Count**: 24 tables across 4 database files
+- **ORM**: No ORM - raw SQL with better-sqlite3
 
 ## Core Tables
 
-### clients
-Client device records with version, hostname, IP, and activity tracking.
+| Table | Database | Purpose | Reference |
+|-------|----------|---------|-----------|
+| `clients` | hub.db | Client registration and tracking | `references/clients.md` |
+| `reports` | hub.db | Client usage reports | `references/reports.md` |
+| `broadcasts` | hub.db | Broadcast notifications | `references/broadcasts.md` |
+| `read_log` | hub.db | Broadcast read tracking (many-to-many) | `references/read_log.md` |
+| `hub_settings` | hub.db | Hub configuration settings | `references/hub_settings.md` |
+| `error_reports` | hub.db | Client error reporting | `references/error_reports.md` |
+| `feedback` | hub.db | User feedback submissions | `references/feedback.md` |
+| `page_views` | hub.db | Daily page view aggregation | `references/page_views.md` |
+| `page_view_logs` | hub.db | Page view log entries | `references/page_view_logs.md` |
+| `download_logs` | hub.db | Download tracking | `references/download_logs.md` |
+| `client_workspaces` | hub.db | Client workspace mapping | `references/client_workspaces.md` |
+| `achievement_leaderboard` | hub.db | Achievement system leaderboard | `references/achievement_leaderboard.md` |
+| `achievement_leaderboard_log` | hub.db | Achievement change log | `references/achievement_leaderboard_log.md` |
+| `rooms` | rooms.db | Multi-purpose room definitions | `references/rooms.md` |
+| `room_members` | rooms.db | Room membership tracking | `references/room_members.md` |
+| `agents` | rooms.db | Agent registration and status | `references/agents.md` |
+| `im_messages` | im.db | Instant messaging messages | `references/im_messages.md` |
 
-### reports
-Time-series usage reports linked to clients (foreign key).
+## Schema Changes Summary (Since 312f64fb)
 
-### broadcasts
-Broadcast notifications with soft-delete flag.
+### New Tables
+None - all tables existed in previous version.
 
-### read_log
-Many-to-many junction table tracking which broadcasts each client has read.
+### Modified Tables
 
-### hub_settings
-Key-value configuration storage (e.g., stardom_dev_mode flag).
+| Table | Change | Impact | Migration |
+|-------|--------|--------|-----------|
+| `im_messages` | Added `seq INTEGER` column | Enables message ordering and sync | ⚠️ MIGRATION |
+| `achievement_leaderboard` | Added `dimension_scores TEXT` column | Stores multi-dimensional achievement scores | ⚠️ MIGRATION |
 
-### error_reports
-Error tracking with session context, workspace, and LLM metadata.
+### New Indexes
 
-### feedback
-User feedback submissions with workspace and LLM context.
-
-### page_views
-Daily pageview aggregation by date.
-
-### page_view_logs
-Raw pageview logs with IP and timestamp.
-
-### download_logs
-Download tracking with IP, filename, and version extraction.
-
-### client_workspaces
-Many-to-many relationship between clients and their workspace paths.
-
-### achievement_leaderboard
-Agent achievement tracking with points, levels, tier counts, and dimension scores.
-
-### achievement_leaderboard_log
-Historical log of leaderboard changes with field-level diff tracking.
-
-## Real-time Collaboration & IM System (NEW)
-
-### rooms ⚠️ MIGRATION
-Collaboration rooms supporting public/private visibility, password protection, and soft-delete.
-**Migration**: Added `visibility` (public/private) and `password` columns via ALTER TABLE.
-
-### room_members
-Junction table managing room membership with roles (owner/member) and capacity enforcement.
-
-### agents ⚠️ MIGRATION
-AI agent registration with capabilities, status tracking, heartbeat monitoring, and workspace configuration.
-**Migration**: Added `workspace_name` column via ALTER TABLE for human-readable workspace display.
-
-### im_messages
-Instant messaging for rooms with features like mentions, quotes, attachments, message types, and automatic 7-day retention.
-**Relationship**: Links to rooms via room_id, supports quote threading via quote_id.
-
-## Database Separation
-
-The IM and Room system uses **separate SQLite databases**:
-- **Main hub DB**: `data/hub.db` (15 tables: clients, reports, broadcasts, etc.)
-- **Rooms DB**: Managed by `RoomDB` class, path configurable (3 tables: rooms, room_members, agents)
-- **IM DB**: Managed by `IMDB` class, path configurable (1 table: im_messages)
-
-Both Room and IM databases use WAL mode and independent file storage for isolation from the main hub database.
-
-## Schema Changes Summary (Incremental Update)
-
-### New Tables (1)
-- **im_messages**: Chat messages with room-based threading, mentions, quotes, and auto-cleanup
-
-### Modified Tables (1)
-- **agents**: Added `workspace_name TEXT` column (nullable) for display purposes
-
-### Integration Points
-- **im_messages.room_id** → Logical foreign key to `rooms.id`
-- **agents.workspace_name** → Display field complementing existing `workspace` path
-- **Room/Agent system** → Standalone database with separate connection and file
+| Table | Index | Purpose |
+|-------|-------|---------|
+| `im_messages` | `idx_im_msg_room_seq` | Message retrieval by sequence number |
 
 ## Migration Requirements
 
-### ⚠️ ALTER TABLE Migrations
-1. **agents.workspace_name** (db-rooms.ts:67-69)
-   - Adds optional human-readable workspace name
-   - Non-breaking (NULL allowed, no data migration needed)
+### ⚠️ MIGRATION: Add seq column to im_messages
 
-2. **rooms.visibility** (db-rooms.ts:56-58)
-   - Adds 'public'/'private' with CHECK constraint
-   - Non-breaking (defaults to 'private')
+```sql
+ALTER TABLE im_messages ADD COLUMN seq INTEGER DEFAULT 0;
+CREATE INDEX IF NOT EXISTS idx_im_msg_room_seq ON im_messages(room_id, seq);
+```
 
-3. **rooms.password** (db-rooms.ts:61-64)
-   - Adds optional password for private rooms
-   - Non-breaking (NULL allowed)
+**Impact**: Required for message sync and ordering. Already handled in `src/db-im.ts` with try-catch for existing databases.
 
-All migrations use try-catch blocks to handle existing columns gracefully.
+**Applied in**: `src/db-im.ts` lines 49-59
 
-## References
-See `references/` directory for detailed table documentation.
+### ⚠️ MIGRATION: Add dimension_scores to achievement_leaderboard
+
+```sql
+ALTER TABLE achievement_leaderboard ADD COLUMN dimension_scores TEXT NOT NULL DEFAULT '{}';
+```
+
+**Impact**: Required for multi-dimensional leaderboard. Already handled in `src/db.ts` with try-catch.
+
+**Applied in**: `src/db.ts` lines 206-210
+
+## Database File Locations
+
+- **Hub DB**: `data/hub.db` (managed by `HubDB` in `src/db.ts`)
+- **Rooms DB**: `data/rooms.db` (managed by `RoomDB` in `src/db-rooms.ts`)
+- **IM DB**: `data/im.db` (managed by `IMDB` in `src/db-im.ts`)
+- **Tasks DB**: `data/tasks.db` (managed by `TaskDB` in `src/db-tasks.ts`)
+
+## Key Design Patterns
+
+1. **WAL Mode**: All databases use `PRAGMA journal_mode = WAL` for better concurrency
+2. **Soft Deletes**: `rooms.active`, `broadcasts.active` flags instead of DELETE
+3. **Upsert Patterns**: `INSERT ON CONFLICT DO UPDATE` for idempotent operations
+4. **Migration**: Try-catch around `ALTER TABLE` adds new columns to existing DBs
+5. **Timestamps**: Use `datetime('now', 'localtime')` for local timezone timestamps
+6. **Foreign Keys**: Defined but not enforced (no `PRAGMA foreign_keys = ON`)
+7. **JSON Storage**: Complex objects stored as TEXT (e.g., `capabilities`, `dimension_scores`)
+
+## Reference Files
+
+See `references/` directory for detailed table schemas including:
+- CREATE TABLE DDL
+- Column details (Name | Type | Nullable | Description)
+- Indexes and foreign keys
+- Source file locations
