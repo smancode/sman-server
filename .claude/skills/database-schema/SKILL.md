@@ -2,8 +2,8 @@
 name: database-schema
 description: Database schema knowledge for sman-server: table structures, relationships, indexes, and DDL
 _scanned:
-  commitHash: 5e4e0b43e7ba530e3efcd3e68e9814c38c250ae2
-  scannedAt: "2026-05-22T19:08:21Z"
+  commitHash: 135322221a07233e556d6b6aa887e121c9b3d358
+  scannedAt: "2026-05-24T00:00:00Z"
   branch: "master"
 ---
 

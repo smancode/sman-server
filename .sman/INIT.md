@@ -75,6 +75,26 @@ initializedAt: "2026-05-19T01:25:17.622Z"
 - 新增: WebSocket 客户端搜索功能（im.clients.search），支持大小写不敏感的 clientId 子串搜索
 - 优化: IM 消息同步改进，基于序列号排序提升可靠性
 
+### 2026-05-24T00:00:00Z (Commit: 13532222)
+**Mode:** 增量更新
+
+**Project Knowledge Skills 更新:**
+- ✅ project-structure: WsHub 构造函数新增 hubDB 参数（支持查询离线客户端）
+- ✅ project-apis: 增强 im.clients.search 功能（支持离线客户端搜索）
+- ✅ project-external-calls: WsHub 新增 HubDBLike 接口依赖
+- ✅ database-schema: 无变更（仅代码层改动）
+
+**Team Knowledge 聚合:**
+- ✅ knowledge-business: 同步更新（无新贡献）
+- ✅ knowledge-conventions: 同步更新（无新贡献）
+- ✅ knowledge-technical: 验证 2 条（全部已验证：技术栈、健康检查端点）
+
+**关键变更:**
+- 🔴 BREAKING: WsHub 构造函数签名变更（新增 hubDB 参数）
+- 新增: HubDBLike 接口（含 getAllClients() 方法）
+- 增强: im.clients.search 现在返回在线+离线客户端（最多 20 条）
+- 修复: IM 消息字段读取错误（从 decrypted 而非 msg 读取）
+
 ### 2026-05-20T19:12:54Z (Commit: 60687534)
 **Mode:** 增量更新
 

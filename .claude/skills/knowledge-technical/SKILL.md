@@ -2,8 +2,8 @@
 name: knowledge-technical
 description: "Technical architecture for sman-server. Verified against code."
 _scanned:
-  commitHash: 5e4e0b43e7ba530e3efcd3e68e9814c38c250ae2
-  scannedAt: "2026-05-23T00:00:00.000Z"
+  commitHash: 135322221a07233e556d6b6aa887e121c9b3d358
+  scannedAt: "2026-05-24T00:00:00.000Z"
   branch: "master"
 ---
 
@@ -65,3 +65,18 @@ _scanned:
   - `4004`: Payload 中缺少 clientId
   - `4005`: PSK 解密失败
 - **默认端口**: 5882（可通过环境变量 PORT 覆盖）
+
+## 启动方式与开发端口
+> by nasakim | 验证: 2026-05-24
+✅ [已验证] package.json:L6-L8, src/index.ts:L23, web/package.json
+- **开发命令**: `bash dev.sh`（同时启动 API 和 UI）
+- **API 端口**: 5882（可通过 `PORT` 环境变量覆盖）
+- **UI 端口**: 4000（Vite dev server，代理到后端 API）
+- **技术栈**: Express 5 + better-sqlite3 + React 19 + Vite
+
+## 健康检查端点
+> by nasakim | 验证: 2026-05-24
+✅ [已验证] src/index.ts:L142-L143
+- **`/health`**: 支持 GET（返回 `{"ok":true}`）和 HEAD（返回 200）
+- **`/api/health`**: 支持 GET（返回 `{"ok":true}`）和 HEAD（返回 200）
+- **用途**: 存活探测，无需认证

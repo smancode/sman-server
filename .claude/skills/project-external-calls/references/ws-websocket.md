@@ -43,8 +43,9 @@ for (const client of rooms.get(room) || []) {
 
 - **WebSocket path**: `/ws` (hardcoded)
 - **Server attachment**: Attached to main HTTP server in `src/index.ts`
-- **Dependencies**: Requires HTTP server instance, RoomDB, IMDB, PSK, TaskEngine
+- **Dependencies**: Requires HTTP server instance, RoomDB, IMDB, HubDB (via HubDBLike interface), PSK, TaskEngine
 - **Initialization**: `src/index.ts` - Creates `WsHub` after server starts listening
+- **⚠️ Breaking Change**: Constructor signature changed in commit 1353222 - now requires `hubDB` parameter
 
 ## Call Locations
 
@@ -162,20 +163,28 @@ for (const client of rooms.get(room) || []) {
 - `im.presence` - User presence updates (encrypted)
 - `im.typing` - Typing indicators (encrypted)
 
-## Client Search Feature (NEW - commit 5e4e0b4)
+## Client Search Feature (ENHANCED - commit 1353222)
 
-**Purpose**: Real-time client discovery and presence
+**Purpose**: Real-time client discovery and presence (including offline clients)
 
 **Message**: `im.clients.search`
 **Parameters**: `{ query: string, seq: number }`
 **Response**: `{ type: 'im.clients.search', results: [{ clientId }], seq }`
 
 **Search Logic**:
-- Case-insensitive substring match on `clientId`
-- Searches all connected WebSocket clients
-- Returns max 20 results
-- Deduplicates clients with multiple connections
-- Use case: Find users to invite to rooms or direct messaging
+- **Phase 1**: Search all connected WebSocket clients
+  - Case-insensitive substring match on `clientId`
+  - Returns max 20 results
+  - Deduplicates clients with multiple connections
+- **Phase 2** (NEW): Search registered clients from HubDB
+  - Only executed if results < 20 after Phase 1
+  - Queries `hubDB.getAllClients()` for offline clients
+  - Matches against both `client_id` AND `hostname`
+  - Case-insensitive substring match
+  - Deduplicates against already-seen clients
+- **Use Case**: Find users to invite to rooms or direct messaging, regardless of online status
+
+**⚠️ Breaking Change**: Requires WsHub to be instantiated with `hubDB` parameter (HubDBLike interface)
 
 ## Stale Connection Cleanup
 
@@ -205,6 +214,14 @@ process.on('SIGTERM', () => {
 
 ## Breaking Changes
 
+### WsHub Constructor Signature (commit 1353222)
+- **Before**: `new WsHub(server, roomDB, imDB, psk, taskEngine?)`
+- **After**: `new WsHub(server, roomDB, imDB, hubDB, psk, taskEngine?)`
+- **New Parameter**: `hubDB` (4th parameter) - HubDBLike interface for offline client search
+- **Impact**: All WsHub instantiation sites must be updated
+- **Interface**: HubDB must implement `getAllClients()` method
+- **Migration**: Update `src/index.ts` to pass `db` as 4th parameter
+
 ### IM Message Encryption (commit ef4576e)
 - **Before**: IM messages in plaintext
 - **After**: IM messages encrypted with `enc:` prefix
@@ -221,3 +238,4 @@ process.on('SIGTERM', () => {
 - **New Message Type**: `im.clients.search`
 - **Use Case**: Client discovery for invitations and direct messaging
 - **Max Results**: 20 clients per search
+- **Enhanced in commit 1353222**: Now includes offline clients from HubDB

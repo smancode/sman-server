@@ -2,8 +2,8 @@
 name: project-external-calls
 description: External dependency knowledge for sman-server. Contains local system calls (database, file system, crypto, WebSocket) with call methods, config sources, and usage locations.
 _scanned:
-  commitHash: 5e4e0b43e7ba530e3efcd3e68e9814c38c250ae2
-  scannedAt: "2026-05-22T19:09:00Z"
+  commitHash: 135322221a07233e556d6b6aa887e121c9b3d358
+  scannedAt: "2026-05-24T14:20:00Z"
   branch: master
 ---
 
@@ -16,7 +16,7 @@ _scanned:
 | better-sqlite3 | SQLite Database | Persistent storage for clients, reports, broadcasts, settings, error reports, feedback, analytics, achievement leaderboard, IM messages, room management, task management | [better-sqlite3.md](references/better-sqlite3.md) |
 | node:crypto | Cryptographic Operations | AES-256-GCM encryption/decryption for client communication, UUID generation for rooms and IM messages, PSK loading and validation, IM message encryption | [node-crypto.md](references/node-crypto.md) |
 | node:fs | File System | Update file serving, redirect mappings, static pages, PSK loading from `data/hub.key`, database directory creation | [node-fs.md](references/node-fs.md) |
-| ws (WebSocket) | Real-time Communication | Desktop client connections, room subscriptions, task broadcasts, instant messaging with encryption, agent presence, client search | [ws-websocket.md](references/ws-websocket.md) |
+| ws (WebSocket) | Real-time Communication | Desktop client connections, room subscriptions, task broadcasts, instant messaging with encryption, agent presence, client search (includes offline clients via HubDB) | [ws-websocket.md](references/ws-websocket.md) |
 
 ## ⚠️ Breaking Changes
 
@@ -37,11 +37,12 @@ _scanned:
 - **Encryption Format**: `enc:` + base64(AES-256-GCM encrypted payload)
 - **Backward Compatible**: Non-encrypted fields pass through unchanged
 
-### Enhanced WebSocket Features (commit 5e4e0b4)
-- **New Message Type**: `im.clients.search` for client discovery
-- **Search Logic**: Case-insensitive substring match on `clientId`
-- **Max Results**: 20 clients per search
-- **Use Case**: Real-time client presence and discovery
+### Enhanced Client Search (commit 1353222)
+- **New Dependency**: WsHub now requires HubDBLike interface
+- **New Interface**: `HubDBLike` with `getAllClients()` method
+- **Enhanced Search**: Client search now includes offline clients from database
+- **Search Fields**: Matches against both `client_id` and `hostname`
+- **Breaking**: WsHub constructor signature changed
 
 ## Integration Points
 
@@ -70,6 +71,9 @@ const decryptedMsg = decryptIMMessage(receivedMsg, PSK);
 
 ### WebSocket Server (`src/ws-server.ts`)
 ```typescript
+// WsHub now requires HubDB for offline client search
+const wsHub = new WsHub(server, roomDB, imDB, hubDB, PSK, taskEngine);
+
 // All IM messages are encrypted/decrypted automatically
 handleImSend(client, msg) {
   const decrypted = decryptIMMessage(msg, this.psk);
@@ -79,6 +83,24 @@ handleImSend(client, msg) {
   // Broadcast encrypted content
   const encrypted = encryptIMMessage({ ...msg, content }, this.psk);
   this.broadcastToRoom(roomId, encrypted);
+}
+
+// Client search now queries HubDB for offline clients
+handleClientsSearch(client, msg) {
+  // Search WS-connected clients
+  for (const [, c] of this.clients) {
+    // Add connected clients...
+  }
+
+  // Also search registered clients from DB (includes offline clients)
+  if (this.hubDB) {
+    for (const dbClient of this.hubDB.getAllClients()) {
+      // Match against both clientId and hostname
+      if (!query || cid.toLowerCase().includes(query) || dbClient.hostname.toLowerCase().includes(query)) {
+        results.push({ clientId: cid });
+      }
+    }
+  }
 }
 ```
 
@@ -104,3 +126,4 @@ handleImSend(client, msg) {
 - **Transparent Routing**: Some IM messages (presence, typing) bypass storage
 - **Automatic Cleanup**: IM messages deleted after 7 days
 - **Message Sequencing**: IM messages have `seq` field for ordering
+- **Offline Client Search**: WebSocket server can query HubDB for registered clients

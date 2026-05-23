@@ -2,8 +2,8 @@
 name: project-structure
 description: Project structure knowledge for sman-server (management hub with encrypted reporting, broadcasts, admin dashboard, real-time IM, room collaboration, and task management)
 _scanned:
-  commitHash: 5e4e0b43e7ba530e3efcd3e68e9814c38c250ae2
-  scannedAt: "2026-05-22T19:09:00Z"
+  commitHash: 135322221a07233e556d6b6aa887e121c9b3d358
+  scannedAt: "2026-05-24T14:20:00Z"
   branch: master
 ---
 
@@ -29,7 +29,7 @@ sman-server/
 │   ├── db-tasks.ts        # TaskDB (background tasks)
 │   ├── db-im.ts           # IMDB (instant messaging with encryption)
 │   ├── crypto.ts          # AES-256-GCM encrypt/decrypt + PSK loading
-│   ├── im-crypto.ts       # ⚠️ NEW IM message encryption layer
+│   ├── im-crypto.ts       # IM message encryption layer
 │   ├── types.ts           # Shared TypeScript interfaces
 │   ├── ws-server.ts       # WebSocket with IM and task support
 │   ├── task-engine.ts     # Background task processing engine
@@ -81,10 +81,10 @@ Copy `.env.example` to `.env`. Required: `PSK` (32-char) OR `SMAN_PSK` env var, 
 - Tests create temp database in `os.tmpdir()` per file
 - IM messages stored persistently with 7-day retention and automatic cleanup
 - IM messages support quotes, mentions, attachments, typing indicators, and sequence numbers
-- ⚠️ NEW: IM message encryption via `im-crypto.ts` for content and attachments
-- ⚠️ NEW: PSK loading refactored into `crypto.ts` with environment variable support
-- ⚠️ NEW: Client search feature via `im.clients.search` WebSocket message
-- ⚠️ NEW: Message sequence numbers for ordering and deduplication
+- IM message encryption via `im-crypto.ts` for content and attachments
+- PSK loading refactored into `crypto.ts` with environment variable support
+- Client search feature via `im.clients.search` WebSocket message (includes offline clients)
+- Message sequence numbers for ordering and deduplication
 
 ## ⚠️ Breaking Changes
 
@@ -114,6 +114,13 @@ Copy `.env.example` to `.env`. Required: `PSK` (32-char) OR `SMAN_PSK` env var, 
 - **Response**: `{ type: 'im.clients.search', results: [{ clientId }], seq }`
 - **Max Results**: 20 clients, case-insensitive substring match on clientId
 
+### WsHub Constructor Signature (commit 1353222)
+- **Before**: `new WsHub(server, roomDB, imDB, psk, taskEngine?)`
+- **After**: `new WsHub(server, roomDB, imDB, hubDB, psk, taskEngine?)`
+- **New Parameter**: `hubDB` (HubDBLike interface) for offline client search
+- **Purpose**: Enables `im.clients.search` to query registered clients from database
+- **Breaking**: Constructor signature changed - all call sites must update
+
 ## Migration Requirements
 
 ⚠️ **MIGRATION**: If upgrading from pre-6f685b9:
@@ -130,3 +137,8 @@ Copy `.env.example` to `.env`. Required: `PSK` (32-char) OR `SMAN_PSK` env var, 
 1. Database schema migration is automatic (ALTER TABLE with try/catch)
 2. Existing messages will have `seq = 0`
 3. New index created automatically on startup
+
+⚠️ **MIGRATION**: If upgrading from pre-1353222:
+1. Update WsHub instantiation to include `hubDB` parameter
+2. In `src/index.ts`: `new WsHub(server, roomDB, imDB, db, PSK, taskEngine)`
+3. HubDB must implement `HubDBLike` interface (requires `getAllClients()` method)
