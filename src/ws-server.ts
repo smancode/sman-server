@@ -9,6 +9,10 @@ import type { WsMessage, WsAuthMessage, TaskStatus } from './types.js';
 import type { TaskEngine } from './task-engine.js';
 import { createTaskHandler } from './ws-task-handler.js';
 
+interface HubDBLike {
+  getAllClients(): { client_id: string; hostname: string }[];
+}
+
 interface AuthedClient {
   ws: WebSocket;
   clientId: string;
@@ -26,15 +30,17 @@ export class WsHub {
   private rooms = new Map<string, Set<WebSocket>>();
   private roomDB: RoomDB;
   private imDB: IMDB;
+  private hubDB: HubDBLike | null;
   private psk: string;
   private staleCheckTimer: ReturnType<typeof setInterval> | null = null;
   private imCleanupTimer: ReturnType<typeof setInterval> | null = null;
   private taskHandler: ReturnType<typeof createTaskHandler> | null = null;
   private taskEngine: TaskEngine | null = null;
 
-  constructor(server: Server, roomDB: RoomDB, imDB: IMDB, psk: string, taskEngine?: TaskEngine) {
+  constructor(server: Server, roomDB: RoomDB, imDB: IMDB, hubDB: HubDBLike | null, psk: string, taskEngine?: TaskEngine) {
     this.roomDB = roomDB;
     this.imDB = imDB;
+    this.hubDB = hubDB;
     this.psk = psk;
     this.taskEngine = taskEngine ?? null;
     this.wss = new WebSocketServer({ server, path: '/ws' });
@@ -457,6 +463,8 @@ export class WsHub {
     const MAX_RESULTS = 20;
     const results: { clientId: string }[] = [];
     const seen = new Set<string>();
+
+    // Search WS-connected clients
     for (const [, c] of this.clients) {
       if (results.length >= MAX_RESULTS) break;
       if (seen.has(c.clientId)) continue;
@@ -465,6 +473,21 @@ export class WsHub {
         results.push({ clientId: c.clientId });
       }
     }
+
+    // Also search registered clients from DB (includes offline clients)
+    if (results.length < MAX_RESULTS && this.hubDB) {
+      for (const dbClient of this.hubDB.getAllClients()) {
+        if (results.length >= MAX_RESULTS) break;
+        const cid = dbClient.client_id;
+        if (seen.has(cid)) continue;
+        seen.add(cid);
+        // Match against both clientId and hostname
+        if (!query || cid.toLowerCase().includes(query) || dbClient.hostname.toLowerCase().includes(query)) {
+          results.push({ clientId: cid });
+        }
+      }
+    }
+
     this.send(client.ws, { type: 'im.clients.search', results, seq: msg.seq });
   }
 

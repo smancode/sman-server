@@ -166,7 +166,7 @@ const server = app.listen(PORT, () => {
   skillScheduler.start();
 });
 
-const wsHub = new WsHub(server, roomDB, imDB, PSK, taskEngine);
+const wsHub = new WsHub(server, roomDB, imDB, db, PSK, taskEngine);
 
 // Hub API routes — registered after wsHub creation, before SPA fallback
 app.use('/api/hub', createHubApiRouter(roomDB, taskDB, PSK, taskEngine, db, wsHub));
