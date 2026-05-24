@@ -119,8 +119,30 @@ export class WsHub {
       this.clients.set(ws, client);
 
       this.send(ws, { type: 'auth.ok', clientId: client.clientId });
+
+      // Send pending IM room invitations for this client
+      // (rooms where they are a member in Hub DB but may not know about locally)
+      this.sendPendingImInvitations(client);
     } catch {
       ws.close(4005, 'Auth failed');
+    }
+  }
+
+  /**
+   * On auth, check Hub DB for rooms where this client is a member.
+   * Send im.room.invited for each so the client can sync locally.
+   */
+  private sendPendingImInvitations(client: AuthedClient): void {
+    const rooms = this.imDB.getRoomsForMember(client.clientId);
+    for (const room of rooms) {
+      const members = JSON.parse(room.members) as string[];
+      const invitedMsg: WsMessage = { type: 'im.room.invited', roomId: room.id, members, name: room.name };
+      const encrypted = encryptIMMessage(invitedMsg as Record<string, unknown>, this.psk);
+      // Also rebuild in-memory membership
+      this.imRoomMembers.set(room.id, new Set(members));
+      if (client.ws.readyState === WebSocket.OPEN) {
+        client.ws.send(JSON.stringify(encrypted));
+      }
     }
   }
 
@@ -203,10 +225,14 @@ export class WsHub {
         this.handleImSync(client, msg);
         break;
       case 'im.agent_delta':
-      case 'im.presence':
       case 'im.typing':
-      case 'im.room.dissolved':
         this.handleImTransparent(client, msg);
+        break;
+      case 'im.room.dissolved':
+        this.handleImRoomDissolved(client, msg);
+        break;
+      case 'im.presence':
+        this.handleImPresence(client, msg);
         break;
       case 'im.room.updated':
         this.handleImRoomUpdated(client, msg);
@@ -451,6 +477,18 @@ export class WsHub {
     this.broadcastToImRoom(roomId, broadcastMsg as WsMessage, client.clientId);
   }
 
+  private handleImRoomDissolved(client: AuthedClient, msg: WsMessage): void {
+    const roomId = msg.roomId as string;
+    if (roomId) {
+      // Remove from Hub DB and in-memory tracking
+      this.imDB.deleteRoom(roomId);
+      this.imRoomMembers.delete(roomId);
+      // Forward to all remaining members
+      const encrypted = encryptIMMessage(msg as Record<string, unknown>, this.psk);
+      this.broadcastToImRoom(roomId, encrypted as WsMessage, client.clientId);
+    }
+  }
+
   private handleImSync(client: AuthedClient, msg: WsMessage): void {
     const roomId = msg.roomId as string;
     if (!roomId) {
@@ -478,16 +516,69 @@ export class WsHub {
     }
   }
 
+  /**
+   * Aggregate online users from all connected clients for this room,
+   * then broadcast the complete presence list to all room members.
+   */
+  private handleImPresence(client: AuthedClient, msg: WsMessage): void {
+    const roomId = msg.roomId as string;
+    if (!roomId) return;
+
+    // Collect all online clientIds for this room from WS-connected clients
+    const members = this.imRoomMembers.get(roomId);
+    if (!members) return;
+
+    const onlineUsers: string[] = [];
+    for (const [, c] of this.clients) {
+      if (members.has(c.clientId)) {
+        onlineUsers.push(c.clientId);
+      }
+    }
+
+    // Broadcast aggregated presence to all room members (including sender)
+    const payload: WsMessage = { type: 'im.presence', roomId, users: onlineUsers, seq: msg.seq };
+    const encrypted = encryptIMMessage(payload as Record<string, unknown>, this.psk);
+    this.broadcastToImRoom(roomId, encrypted as WsMessage);
+  }
+
   private handleImRoomUpdated(client: AuthedClient, msg: WsMessage): void {
     const roomId = msg.roomId as string;
     const members = msg.members as string[] | undefined;
+    const roomName = (msg.name as string) || '';
     if (roomId && members) {
-      // Update Hub-side membership tracking
-      const memberSet = new Set(members);
-      this.imRoomMembers.set(roomId, memberSet);
+      // Determine which members are new (not in the old set)
+      const oldMembers = this.imRoomMembers.get(roomId);
+      const newMemberSet = new Set(members);
+      const addedMembers: string[] = [];
+      if (oldMembers) {
+        for (const m of members) {
+          if (!oldMembers.has(m)) addedMembers.push(m);
+        }
+      } else {
+        // No prior record — treat all as new
+        addedMembers.push(...members);
+      }
+
+      // Update Hub-side membership tracking (in-memory)
+      this.imRoomMembers.set(roomId, newMemberSet);
+
+      // Persist room to DB so offline users can discover it on reconnect
+      this.imDB.upsertRoom(roomId, roomName, members);
+
       // Forward to all members (including sender, so they get confirmation)
       const encrypted = encryptIMMessage(msg as Record<string, unknown>, this.psk);
       this.broadcastToImRoom(roomId, encrypted as WsMessage);
+
+      // Send im.room.invited to newly added members so they can fetch room data
+      if (addedMembers.length > 0) {
+        const invitedMsg: WsMessage = { type: 'im.room.invited', roomId, members };
+        const invitedEncrypted = encryptIMMessage(invitedMsg as Record<string, unknown>, this.psk);
+        for (const [ws, c] of this.clients) {
+          if (addedMembers.includes(c.clientId) && ws.readyState === WebSocket.OPEN) {
+            ws.send(JSON.stringify(invitedEncrypted));
+          }
+        }
+      }
     }
   }
 
