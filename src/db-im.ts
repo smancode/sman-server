@@ -59,6 +59,7 @@ export class IMDB {
         attachments TEXT,
         session_id TEXT,
         timestamp INTEGER NOT NULL,
+        seq INTEGER DEFAULT 0,
         created_at DATETIME DEFAULT (datetime('now', 'localtime'))
       );
 
@@ -73,13 +74,6 @@ export class IMDB {
       CREATE INDEX IF NOT EXISTS idx_im_msg_room_ts ON im_messages(room_id, timestamp);
       CREATE INDEX IF NOT EXISTS idx_im_msg_room_seq ON im_messages(room_id, seq);
     `);
-
-    // seq migration
-    try {
-      this.db.exec('ALTER TABLE im_messages ADD COLUMN seq INTEGER DEFAULT 0');
-    } catch {
-      // Column already exists
-    }
   }
 
   private prepareStatements() {

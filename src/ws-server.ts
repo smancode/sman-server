@@ -241,6 +241,10 @@ export class WsHub {
     const client = this.clients.get(ws);
     if (!client) return;
 
+    if (msg.type.startsWith('im.')) {
+      LOG(`route: type=${msg.type} from=${client.clientId}`);
+    }
+
     if (this.taskHandler && (msg.type.startsWith('task.') || msg.type.startsWith('evaluation.'))) {
       const handled = this.taskHandler.handle(client, msg);
       if (handled) return;
@@ -318,6 +322,7 @@ export class WsHub {
         break;
 
       default:
+        LOG(`Unknown message type: ${msg.type} from ${client.clientId}`);
         this.sendError(ws, `Unknown message type: ${msg.type}`);
     }
   }
@@ -518,11 +523,12 @@ export class WsHub {
     const roomId = msg.roomId as string;
     // Decrypt content from transmission
     const decrypted = decryptIMMessage(msg as Record<string, unknown>, this.psk);
-    const content = decrypted.content as string;
-    if (!roomId || !content) {
-      this.sendError(client.ws, 'roomId and content are required for im.send');
+    const content = (decrypted.content as string) || '';
+    if (!roomId) {
+      this.sendError(client.ws, 'roomId is required for im.send');
       return;
     }
+    LOG(`im.send: from=${client.clientId}, room=${roomId}, content=${String(content).slice(0, 50)}`);
 
     const id = (msg.id as string) || nodeCrypto.randomUUID();
     const timestamp = (msg.timestamp as number) || Date.now();
@@ -540,7 +546,7 @@ export class WsHub {
       content,
       mentioned_agents: msg.mentionedAgents ? JSON.stringify(msg.mentionedAgents) : undefined,
       quote_id: (msg.quoteId as string) || undefined,
-      type: (decrypted.type as string) || 'text',
+      type: (msg.msgType as string) || (decrypted.type as string) || 'text',
       status: (decrypted.status as string) || undefined,
       attachments: decrypted.attachments ? JSON.stringify(decrypted.attachments) : undefined,
       session_id: (decrypted.sessionId as string) || undefined,
@@ -579,6 +585,7 @@ export class WsHub {
     }
     const afterTimestamp = (msg.afterTimestamp as number) || 0;
     const messages = this.imDB.getMessagesAfter(roomId, afterTimestamp);
+    LOG(`im.sync: from=${client.clientId}, room=${roomId}, after=${afterTimestamp}, found=${messages.length}`);
     // Encrypt message content for transmission
     const encryptedMessages = messages.map(m => encryptIMMessage(m as unknown as Record<string, unknown>, this.psk));
     this.send(client.ws, { type: 'im.sync', data: { roomId, messages: encryptedMessages } });
@@ -635,7 +642,7 @@ export class WsHub {
       // Send im.room.invited to newly added members (excluding sender) so they can fetch room data
       const invitedMembers = addedMembers.filter(m => m !== client.clientId);
       if (invitedMembers.length > 0) {
-        const invitedMsg: WsMessage = { type: 'im.room.invited', roomId, members };
+        const invitedMsg: WsMessage = { type: 'im.room.invited', roomId, members, name: roomName };
         const invitedEncrypted = encryptIMMessage(invitedMsg as Record<string, unknown>, this.psk);
         const data = JSON.stringify(invitedEncrypted);
         for (const memberId of invitedMembers) {
