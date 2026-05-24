@@ -29,6 +29,7 @@ export class IMDB {
   private db: Database.Database;
   private stmts: {
     insertMessage: Database.Statement;
+    upsertMessage: Database.Statement;
     getMessagesAfter: Database.Statement;
     deleteOldMessages: Database.Statement;
     upsertRoom: Database.Statement;
@@ -82,6 +83,11 @@ export class IMDB {
         INSERT OR IGNORE INTO im_messages (id, room_id, sender, content, mentioned_agents, quote_id, type, status, attachments, session_id, timestamp, seq)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `),
+      upsertMessage: this.db.prepare(`
+        INSERT INTO im_messages (id, room_id, sender, content, mentioned_agents, quote_id, type, status, attachments, session_id, timestamp, seq)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(id) DO UPDATE SET content = excluded.content, status = excluded.status, type = excluded.type
+      `),
       getMessagesAfter: this.db.prepare(`
         SELECT * FROM im_messages WHERE room_id = ? AND timestamp > ? ORDER BY timestamp ASC LIMIT ?
       `),
@@ -115,6 +121,30 @@ export class IMDB {
     seq?: number;
   }): void {
     this.stmts.insertMessage.run(
+      msg.id, msg.room_id, msg.sender, msg.content,
+      msg.mentioned_agents ?? null, msg.quote_id ?? null,
+      msg.type ?? 'text', msg.status ?? null,
+      msg.attachments ?? null, msg.session_id ?? null,
+      msg.timestamp, msg.seq ?? 0,
+    );
+  }
+
+  /** Upsert message — inserts new or updates content/status/type for existing (agent lifecycle) */
+  upsertMessage(msg: {
+    id: string;
+    room_id: string;
+    sender: string;
+    content: string;
+    mentioned_agents?: string;
+    quote_id?: string;
+    type?: string;
+    status?: string;
+    attachments?: string;
+    session_id?: string;
+    timestamp: number;
+    seq?: number;
+  }): void {
+    this.stmts.upsertMessage.run(
       msg.id, msg.room_id, msg.sender, msg.content,
       msg.mentioned_agents ?? null, msg.quote_id ?? null,
       msg.type ?? 'text', msg.status ?? null,

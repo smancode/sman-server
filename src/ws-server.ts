@@ -152,10 +152,16 @@ export class WsHub {
 
     const affectedRoomIds: string[] = [];
 
-    // Phase 1: rebuild in-memory membership + send invites to this client
+    // Phase 1: merge in-memory membership + send invites to this client
     for (const room of rooms) {
       const members = JSON.parse(room.members) as string[];
-      this.imRoomMembers.set(room.id, new Set(members));
+      // Merge with existing in-memory set instead of replacing
+      const existing = this.imRoomMembers.get(room.id);
+      if (existing) {
+        for (const m of members) existing.add(m);
+      } else {
+        this.imRoomMembers.set(room.id, new Set(members));
+      }
       affectedRoomIds.push(room.id);
 
       if (client.ws.readyState === WebSocket.OPEN) {
@@ -533,29 +539,52 @@ export class WsHub {
     const id = (msg.id as string) || nodeCrypto.randomUUID();
     const timestamp = (msg.timestamp as number) || Date.now();
     const seq = (msg.seq as number) || 0;
-    const sender = (msg.sender as string) || client.clientId;
+    // Validate sender: must be the client themselves or one of their agents
+    const rawSender = (msg.sender as string) || client.clientId;
+    const sender = rawSender === client.clientId || rawSender.startsWith(client.clientId + '/')
+      ? rawSender
+      : client.clientId;
 
-    // Track sender as member of this IM room
-    this.addImRoomMember(roomId, sender);
+    // Track sender as member of this IM room (only real clients, not agents)
+    if (!sender.includes('/')) {
+      this.addImRoomMember(roomId, sender);
+    }
+    // Also ensure the real client (owner of the agent) is tracked
+    if (sender.includes('/') && sender.startsWith(client.clientId + '/')) {
+      this.addImRoomMember(roomId, client.clientId);
+    }
 
-    // Store plaintext in DB
-    this.imDB.insertMessage({
+    const type = (msg.msgType as string) || (decrypted.type as string) || 'text';
+    const status = (decrypted.status as string) || undefined;
+    const sessionId = (decrypted.sessionId as string) || undefined;
+
+    // Upsert into DB (insert new or update content/status for agent lifecycle)
+    this.imDB.upsertMessage({
       id,
       room_id: roomId,
       sender,
       content,
       mentioned_agents: msg.mentionedAgents ? JSON.stringify(msg.mentionedAgents) : undefined,
       quote_id: (msg.quoteId as string) || undefined,
-      type: (msg.msgType as string) || (decrypted.type as string) || 'text',
-      status: (decrypted.status as string) || undefined,
+      type,
+      status,
       attachments: decrypted.attachments ? JSON.stringify(decrypted.attachments) : undefined,
-      session_id: (decrypted.sessionId as string) || undefined,
+      session_id: sessionId,
       timestamp,
       seq,
     });
 
-    // Broadcast encrypted content only to members of this IM room (excluding sender)
-    const broadcastMsg = encryptIMMessage({ ...msg, type: 'im.message', id, timestamp, seq, content } as Record<string, unknown>, this.psk);
+    // Broadcast full message to members (excluding sender)
+    const fullMsg: Record<string, unknown> = {
+      type: 'im.message', id, roomId, sender, content,
+      msgType: type, timestamp, seq, mentionedAgents: msg.mentionedAgents,
+      quoteId: (msg.quoteId as string) || undefined, status, sessionId,
+    };
+    // Remove undefined fields
+    for (const key of Object.keys(fullMsg)) {
+      if (fullMsg[key] === undefined) delete fullMsg[key];
+    }
+    const broadcastMsg = encryptIMMessage(fullMsg, this.psk);
     this.broadcastToImRoom(roomId, broadcastMsg as WsMessage, client.clientId);
   }
 
@@ -577,11 +606,18 @@ export class WsHub {
       this.sendError(client.ws, 'roomId is required for im.sync');
       return;
     }
-    // Only allow sync for rooms the client is a member of
+    // Verify membership: check in-memory first, then fall back to DB
     const members = this.imRoomMembers.get(roomId);
-    if (!members || !members.has(client.clientId)) {
-      // Client may have just reconnected before sending any messages — allow if we have no record
-      // (first message will register them)
+    const isMemberInMemory = members?.has(client.clientId);
+    if (!isMemberInMemory) {
+      const dbRoom = this.imDB.getRoom(roomId);
+      const dbMembers: string[] = dbRoom ? JSON.parse(dbRoom.members) : [];
+      if (!dbMembers.includes(client.clientId)) {
+        this.sendError(client.ws, 'Not a member of this room');
+        return;
+      }
+      // Re-register in memory for future checks
+      this.addImRoomMember(roomId, client.clientId);
     }
     const afterTimestamp = (msg.afterTimestamp as number) || 0;
     const messages = this.imDB.getMessagesAfter(roomId, afterTimestamp);
