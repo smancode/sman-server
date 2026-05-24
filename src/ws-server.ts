@@ -591,12 +591,12 @@ export class WsHub {
   private handleImRoomDissolved(client: AuthedClient, msg: WsMessage): void {
     const roomId = msg.roomId as string;
     if (roomId) {
+      // Forward to all remaining members BEFORE deleting membership
+      const encrypted = encryptIMMessage(msg as Record<string, unknown>, this.psk);
+      this.broadcastToImRoom(roomId, encrypted as WsMessage, client.clientId);
       // Remove from Hub DB and in-memory tracking
       this.imDB.deleteRoom(roomId);
       this.imRoomMembers.delete(roomId);
-      // Forward to all remaining members
-      const encrypted = encryptIMMessage(msg as Record<string, unknown>, this.psk);
-      this.broadcastToImRoom(roomId, encrypted as WsMessage, client.clientId);
     }
   }
 

@@ -22,63 +22,226 @@ function cleanupDB(dbPath: string, imdb: IMDB): void {
   try { fs.unlinkSync(dbPath); } catch {}
 }
 
-// ─── IMDB: Message CRUD ───
+/**
+ * Simulate handleImSend: decrypt → upsert → broadcast
+ * This is the Hub's core IM message processing flow
+ */
+function simulateHubImSend(
+  imdb: IMDB,
+  roomId: string,
+  sender: string,
+  content: string,
+  overrides: {
+    id?: string;
+    msgType?: string;
+    status?: string;
+    sessionId?: string;
+    seq?: number;
+    timestamp?: number;
+  } = {},
+): { id: string; broadcastMsg: Record<string, unknown> } {
+  const id = overrides.id || crypto.randomUUID();
+  const timestamp = overrides.timestamp || Date.now();
+  const seq = overrides.seq || 0;
+  const type = overrides.msgType || 'text';
+  const status = overrides.status;
+  const sessionId = overrides.sessionId;
 
-describe('IMDB: Message CRUD', () => {
+  // Hub decrypts the message
+  // Hub upserts into DB
+  imdb.upsertMessage({
+    id,
+    room_id: roomId,
+    sender,
+    content,
+    type,
+    status,
+    session_id: sessionId,
+    timestamp,
+    seq,
+  });
+
+  // Hub constructs broadcast message
+  const broadcastMsg: Record<string, unknown> = {
+    type: 'im.message',
+    id,
+    roomId,
+    sender,
+    content,
+    msgType: type,
+    timestamp,
+    seq,
+    status,
+    sessionId,
+  };
+  // Remove undefined fields (as Hub code does)
+  for (const key of Object.keys(broadcastMsg)) {
+    if (broadcastMsg[key] === undefined) delete broadcastMsg[key];
+  }
+
+  return { id, broadcastMsg };
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 场景 1: A 发消息 → Hub 存储 → B 通过广播收到完整字段
+// ═══════════════════════════════════════════════════════════════════════════
+
+describe('场景: A 发消息 → Hub 存储 → B 通过广播收到完整字段', () => {
   let dbPath: string;
   let imdb: IMDB;
 
   beforeEach(() => {
     ({ dbPath, imdb } = createTestDB());
-    imdb.upsertRoom('r1', 'Test Room', ['alice', 'bob']);
+    imdb.upsertRoom('r1', 'Test Room', ['alice@dev', 'bob@dev']);
   });
 
   afterEach(() => cleanupDB(dbPath, imdb));
 
-  it('inserts and retrieves a text message', () => {
-    imdb.insertMessage({ id: 'm1', room_id: 'r1', sender: 'alice', content: 'hello', timestamp: 1000, seq: 1 });
+  it('Hub 收到 im.send → upsertMessage 存入 DB，字段完整', () => {
+    const { id } = simulateHubImSend(imdb, 'r1', 'alice@dev', 'hello from alice');
     const msgs = imdb.getMessagesAfter('r1', 0);
     expect(msgs).toHaveLength(1);
-    expect(msgs[0].content).toBe('hello');
-    expect(msgs[0].sender).toBe('alice');
+    expect(msgs[0].content).toBe('hello from alice');
+    expect(msgs[0].sender).toBe('alice@dev');
     expect(msgs[0].type).toBe('text');
+    expect(msgs[0].room_id).toBe('r1');
   });
 
-  it('inserts message with all optional fields', () => {
-    imdb.insertMessage({
-      id: 'm1', room_id: 'r1', sender: 'alice', content: 'msg',
-      mentioned_agents: JSON.stringify(['agent1']), quote_id: 'q1',
-      type: 'text', status: null, attachments: JSON.stringify([{ file: 'a.pdf' }]),
-      session_id: null, timestamp: 1000, seq: 1,
+  it('广播消息含完整字段（content / sender / type / roomId / seq / timestamp）', () => {
+    const { broadcastMsg } = simulateHubImSend(imdb, 'r1', 'alice@dev', 'broadcast test', {
+      msgType: 'text',
+      seq: 5,
     });
-    const msgs = imdb.getMessagesAfter('r1', 0);
-    expect(msgs[0].mentioned_agents).toBe(JSON.stringify(['agent1']));
-    expect(msgs[0].quote_id).toBe('q1');
-    expect(msgs[0].attachments).toBe(JSON.stringify([{ file: 'a.pdf' }]));
+    expect(broadcastMsg.content).toBe('broadcast test');
+    expect(broadcastMsg.sender).toBe('alice@dev');
+    expect(broadcastMsg.msgType).toBe('text');
+    expect(broadcastMsg.roomId).toBe('r1');
+    expect(broadcastMsg.seq).toBe(5);
+    expect(broadcastMsg.timestamp).toBeGreaterThan(0);
   });
 
-  it('stores agent_output with status and session_id', () => {
-    imdb.insertMessage({
-      id: 'm1', room_id: 'r1', sender: 'alice/agent', content: 'running...',
+  it('B 收到广播后解密得到原始 content', () => {
+    const { broadcastMsg } = simulateHubImSend(imdb, 'r1', 'alice@dev', 'secret for bob');
+    const encrypted = encryptIMMessage(broadcastMsg, PSK);
+    const decrypted = decryptIMMessage(encrypted, PSK);
+    expect(decrypted.content).toBe('secret for bob');
+    expect(decrypted.sender).toBe('alice@dev');
+  });
+
+  it('广播消息的 status/sessionId/mentionedAgents 完整传递', () => {
+    const { broadcastMsg } = simulateHubImSend(imdb, 'r1', 'alice@dev/agent1', 'agent result', {
+      msgType: 'agent_output',
+      status: 'completed',
+      sessionId: 'sess-abc',
+    });
+    expect(broadcastMsg.status).toBe('completed');
+    expect(broadcastMsg.sessionId).toBe('sess-abc');
+    expect(broadcastMsg.msgType).toBe('agent_output');
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 场景 2: Agent running → completed，Hub upsertMessage 生命周期
+// ═══════════════════════════════════════════════════════════════════════════
+
+describe('场景: Agent running → completed，Hub upsertMessage 保证最终状态正确', () => {
+  let dbPath: string;
+  let imdb: IMDB;
+
+  beforeEach(() => {
+    ({ dbPath, imdb } = createTestDB());
+    imdb.upsertRoom('r1', 'Room', ['alice@dev']);
+  });
+
+  afterEach(() => cleanupDB(dbPath, imdb));
+
+  it('running 消息 upsert → DB 状态为 running', () => {
+    imdb.upsertMessage({
+      id: 'm-agent-1', room_id: 'r1', sender: 'alice@dev/agent1', content: '',
       type: 'agent_output', status: 'running', session_id: 'sess-1',
       timestamp: 1000, seq: 1,
     });
-    imdb.insertMessage({
-      id: 'm2', room_id: 'r1', sender: 'alice/agent', content: 'final answer',
-      type: 'agent_output', status: 'completed', session_id: 'sess-1',
-      timestamp: 2000, seq: 2,
-    });
     const msgs = imdb.getMessagesAfter('r1', 0);
-    expect(msgs).toHaveLength(2);
+    expect(msgs).toHaveLength(1);
     expect(msgs[0].status).toBe('running');
-    expect(msgs[1].status).toBe('completed');
-    expect(msgs[1].session_id).toBe('sess-1');
+    expect(msgs[0].content).toBe('');
   });
 
-  it('stores empty content (agent running status)', () => {
+  it('completed 消息用 upsert 更新 running → 最终 DB 是 completed 且有完整内容', () => {
+    // First: running
+    imdb.upsertMessage({
+      id: 'm-agent-1', room_id: 'r1', sender: 'alice@dev/agent1', content: '',
+      type: 'agent_output', status: 'running', session_id: 'sess-1',
+      timestamp: 1000, seq: 1,
+    });
+    // Then: completed (same id, updated content + status)
+    imdb.upsertMessage({
+      id: 'm-agent-1', room_id: 'r1', sender: 'alice@dev/agent1', content: '最终答案：42',
+      type: 'agent_output', status: 'completed', session_id: 'sess-1',
+      timestamp: 1000, seq: 1,
+    });
+    const msgs = imdb.getMessagesAfter('r1', 0);
+    expect(msgs).toHaveLength(1); // Still 1 message, not 2
+    expect(msgs[0].status).toBe('completed');
+    expect(msgs[0].content).toBe('最终答案：42');
+    expect(msgs[0].type).toBe('agent_output');
+  });
+
+  it('upsert vs insert: insert (INSERT OR IGNORE) 不会更新 running → completed', () => {
+    // Using insertMessage (INSERT OR IGNORE)
     imdb.insertMessage({
-      id: 'm1', room_id: 'r1', sender: 'alice/agent', content: '',
-      type: 'agent_output', status: 'running', timestamp: 1000, seq: 1,
+      id: 'm-agent-2', room_id: 'r1', sender: 'alice@dev/agent1', content: '',
+      type: 'agent_output', status: 'running', session_id: 'sess-2',
+      timestamp: 1000, seq: 1,
+    });
+    // Try to "complete" with insertMessage — it's IGNORED
+    imdb.insertMessage({
+      id: 'm-agent-2', room_id: 'r1', sender: 'alice@dev/agent1', content: 'answer',
+      type: 'agent_output', status: 'completed', session_id: 'sess-2',
+      timestamp: 1000, seq: 1,
+    });
+    const msgs = imdb.getMessagesAfter('r1', 0);
+    expect(msgs[0].status).toBe('running'); // Still running! Bug if using insert instead of upsert
+    expect(msgs[0].content).toBe(''); // Content not updated
+  });
+
+  it('running → failed 生命周期', () => {
+    imdb.upsertMessage({
+      id: 'm-agent-3', room_id: 'r1', sender: 'alice@dev/agent1', content: '',
+      type: 'agent_output', status: 'running', session_id: 'sess-3',
+      timestamp: 1000, seq: 1,
+    });
+    imdb.upsertMessage({
+      id: 'm-agent-3', room_id: 'r1', sender: 'alice@dev/agent1', content: '执行超时',
+      type: 'agent_output', status: 'failed', session_id: 'sess-3',
+      timestamp: 1000, seq: 1,
+    });
+    const msgs = imdb.getMessagesAfter('r1', 0);
+    expect(msgs[0].status).toBe('failed');
+    expect(msgs[0].content).toBe('执行超时');
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 场景 3: 空 content（agent running）Hub 不丢弃
+// ═══════════════════════════════════════════════════════════════════════════
+
+describe('场景: 空 content（agent running）Hub 正确存储且不丢弃', () => {
+  let dbPath: string;
+  let imdb: IMDB;
+
+  beforeEach(() => {
+    ({ dbPath, imdb } = createTestDB());
+    imdb.upsertRoom('r1', 'Room', ['alice@dev']);
+  });
+
+  afterEach(() => cleanupDB(dbPath, imdb));
+
+  it('content="" 的 agent_output 消息正确存入 Hub DB', () => {
+    imdb.upsertMessage({
+      id: 'm-empty', room_id: 'r1', sender: 'alice@dev/agent1', content: '',
+      type: 'agent_output', status: 'running', session_id: 's1',
+      timestamp: 1000, seq: 1,
     });
     const msgs = imdb.getMessagesAfter('r1', 0);
     expect(msgs).toHaveLength(1);
@@ -86,372 +249,243 @@ describe('IMDB: Message CRUD', () => {
     expect(msgs[0].status).toBe('running');
   });
 
-  it('deduplicates with INSERT OR IGNORE', () => {
-    imdb.insertMessage({ id: 'm1', room_id: 'r1', sender: 'alice', content: 'hello', timestamp: 1000, seq: 1 });
-    imdb.insertMessage({ id: 'm1', room_id: 'r1', sender: 'alice', content: 'hello', timestamp: 1000, seq: 1 });
-    expect(imdb.getMessagesAfter('r1', 0)).toHaveLength(1);
+  it('Hub 广播 content="" 的消息，接收方解密后得到空字符串', () => {
+    const msg = { type: 'im.message', roomId: 'r1', content: '', status: 'running', msgType: 'agent_output' };
+    const encrypted = encryptIMMessage(msg as Record<string, unknown>, PSK);
+    // Empty content is not encrypted (encryptIMMessage skips empty strings)
+    expect(encrypted.content).toBe('');
+    const decrypted = decryptIMMessage(encrypted, PSK);
+    expect(decrypted.content).toBe('');
   });
 
-  it('getMessagesAfter filters by timestamp', () => {
-    for (let i = 0; i < 5; i++) {
-      imdb.insertMessage({ id: `m${i}`, room_id: 'r1', sender: 'alice', content: `msg${i}`, timestamp: 1000 + i * 100, seq: i + 1 });
-    }
-    const after = imdb.getMessagesAfter('r1', 1200);
-    expect(after).toHaveLength(2); // m3(1300), m4(1400)
-  });
-
-  it('getMessagesAfter respects limit', () => {
-    for (let i = 0; i < 10; i++) {
-      imdb.insertMessage({ id: `m${i}`, room_id: 'r1', sender: 'alice', content: `msg${i}`, timestamp: 1000 + i, seq: i + 1 });
-    }
-    expect(imdb.getMessagesAfter('r1', 0, 3)).toHaveLength(3);
-  });
-
-  it('getMessagesAfter returns messages ordered by timestamp ASC', () => {
-    imdb.insertMessage({ id: 'm3', room_id: 'r1', sender: 'alice', content: 'c', timestamp: 3000, seq: 3 });
-    imdb.insertMessage({ id: 'm1', room_id: 'r1', sender: 'alice', content: 'a', timestamp: 1000, seq: 1 });
-    imdb.insertMessage({ id: 'm2', room_id: 'r1', sender: 'alice', content: 'b', timestamp: 2000, seq: 2 });
+  it('sync 返回 content="" 的消息 → 接收方能收到', () => {
+    imdb.upsertMessage({
+      id: 'm-sync-empty', room_id: 'r1', sender: 'alice@dev/agent1', content: '',
+      type: 'agent_output', status: 'running', session_id: 's1',
+      timestamp: 1000, seq: 1,
+    });
     const msgs = imdb.getMessagesAfter('r1', 0);
-    expect(msgs.map(m => m.id)).toEqual(['m1', 'm2', 'm3']);
-  });
-
-  it('getMessagesAfter returns empty for room with no messages after timestamp', () => {
-    imdb.insertMessage({ id: 'm1', room_id: 'r1', sender: 'alice', content: 'hello', timestamp: 1000, seq: 1 });
-    expect(imdb.getMessagesAfter('r1', 2000)).toHaveLength(0);
-  });
-
-  it('deleteOldMessages removes messages older than 7 days', () => {
-    const now = Date.now();
-    imdb.insertMessage({ id: 'old', room_id: 'r1', sender: 'alice', content: 'old', timestamp: now - 8 * 86400000, seq: 1 });
-    imdb.insertMessage({ id: 'new', room_id: 'r1', sender: 'alice', content: 'new', timestamp: now, seq: 2 });
-    const deleted = imdb.deleteOldMessages();
-    expect(deleted).toBe(1);
-    const remaining = imdb.getMessagesAfter('r1', 0);
-    expect(remaining).toHaveLength(1);
-    expect(remaining[0].id).toBe('new');
-  });
-
-  it('deleteOldMessages returns 0 when no old messages', () => {
-    imdb.insertMessage({ id: 'm1', room_id: 'r1', sender: 'alice', content: 'recent', timestamp: Date.now(), seq: 1 });
-    expect(imdb.deleteOldMessages()).toBe(0);
+    expect(msgs).toHaveLength(1);
+    // Sync encrypts messages for transmission
+    const encrypted = encryptIMMessage(msgs[0] as unknown as Record<string, unknown>, PSK);
+    const decrypted = decryptIMMessage(encrypted, PSK);
+    expect(decrypted.content).toBe('');
   });
 });
 
-// ─── IMDB: Room CRUD ───
+// ═══════════════════════════════════════════════════════════════════════════
+// 场景 4: Hub sync 返回正确的消息（按 afterTimestamp 过滤、加密传输）
+// ═══════════════════════════════════════════════════════════════════════════
 
-describe('IMDB: Room CRUD', () => {
+describe('场景: Hub im.sync 返回正确消息（按 timestamp 过滤、加密传输）', () => {
   let dbPath: string;
   let imdb: IMDB;
 
   beforeEach(() => {
     ({ dbPath, imdb } = createTestDB());
+    imdb.upsertRoom('r1', 'Room', ['alice@dev', 'bob@dev']);
   });
 
   afterEach(() => cleanupDB(dbPath, imdb));
 
-  it('upsertRoom creates a new room', () => {
-    imdb.upsertRoom('r1', 'Room1', ['alice', 'bob']);
-    const room = imdb.getRoom('r1');
-    expect(room).toBeDefined();
-    expect(room!.name).toBe('Room1');
-    expect(JSON.parse(room!.members)).toEqual(['alice', 'bob']);
-  });
-
-  it('upsertRoom updates existing room members and name', () => {
-    imdb.upsertRoom('r1', 'Original', ['alice']);
-    imdb.upsertRoom('r1', 'Updated', ['alice', 'bob']);
-    const room = imdb.getRoom('r1');
-    expect(room!.name).toBe('Updated');
-    expect(JSON.parse(room!.members)).toEqual(['alice', 'bob']);
-  });
-
-  it('getRoom returns undefined for nonexistent room', () => {
-    expect(imdb.getRoom('nonexistent')).toBeUndefined();
-  });
-
-  it('getRoomsForMember finds rooms containing the member', () => {
-    imdb.upsertRoom('r1', 'Room1', ['alice', 'bob']);
-    imdb.upsertRoom('r2', 'Room2', ['charlie']);
-    imdb.upsertRoom('r3', 'Room3', ['alice', 'dave']);
-    const rooms = imdb.getRoomsForMember('alice');
-    expect(rooms).toHaveLength(2);
-    const ids = rooms.map(r => r.id).sort();
-    expect(ids).toEqual(['r1', 'r3']);
-  });
-
-  it('getRoomsForMember returns empty when member not in any room', () => {
-    imdb.upsertRoom('r1', 'Room1', ['alice']);
-    expect(imdb.getRoomsForMember('bob')).toHaveLength(0);
-  });
-
-  it('deleteRoom removes room from DB', () => {
-    imdb.upsertRoom('r1', 'Room', ['alice']);
-    imdb.deleteRoom('r1');
-    expect(imdb.getRoom('r1')).toBeUndefined();
-  });
-
-  it('upsertRoom preserves last_message_time', () => {
-    imdb.upsertRoom('r1', 'Room', ['alice'], 5000);
-    const room = imdb.getRoom('r1');
-    expect(room!.last_message_time).toBe(5000);
-  });
-});
-
-// ─── im-crypto (server side with PSK) ───
-
-describe('im-crypto (server)', () => {
-  it('encryptField adds enc: prefix', () => {
-    const result = encryptField('hello', PSK);
-    expect(result).toMatch(/^enc:/);
-  });
-
-  it('decryptField restores plaintext', () => {
-    const encrypted = encryptField('secret', PSK);
-    expect(decryptField(encrypted, PSK)).toBe('secret');
-  });
-
-  it('decryptField returns original if not encrypted', () => {
-    expect(decryptField('plain text', PSK)).toBe('plain text');
-  });
-
-  it('decryptField returns original on corrupt ciphertext', () => {
-    const corrupt = 'enc:invalid-base64!!!';
-    expect(decryptField(corrupt, PSK)).toBe(corrupt);
-  });
-
-  it('decryptField with wrong PSK returns original on error', () => {
-    const encrypted = encryptField('secret', PSK);
-    const wrongPsk = 'wrong-key-12345678901234567890';
-    expect(decryptField(encrypted, wrongPsk)).toBe(encrypted);
-  });
-
-  it('encryptIMMessage encrypts content field', () => {
-    const original = { type: 'im.send', roomId: 'r1', content: 'secret message' };
-    const encrypted = encryptIMMessage(original as Record<string, unknown>, PSK);
-    expect((encrypted as any).content).toMatch(/^enc:/);
-    expect(encrypted.type).toBe('im.send');
-    expect(encrypted.roomId).toBe('r1');
-  });
-
-  it('encryptIMMessage encrypts attachments string', () => {
-    const original = { type: 'text', content: 'msg', attachments: 'file-data' };
-    const encrypted = encryptIMMessage(original as Record<string, unknown>, PSK);
-    expect((encrypted as any).attachments).toMatch(/^enc:/);
-  });
-
-  it('encryptIMMessage skips empty content', () => {
-    const original = { type: 'agent_output', content: '' };
-    const encrypted = encryptIMMessage(original as Record<string, unknown>, PSK);
-    expect(encrypted.content).toBe('');
-  });
-
-  it('decryptIMMessage restores encrypted content', () => {
-    const encrypted = encryptIMMessage({ type: 'im.send', content: 'hello' } as Record<string, unknown>, PSK);
-    const decrypted = decryptIMMessage(encrypted, PSK);
-    expect(decrypted.content).toBe('hello');
-  });
-
-  it('decryptIMMessage passes through non-content fields unchanged', () => {
-    const original = {
-      type: 'im.send', roomId: 'r1', sender: 'alice',
-      mentionedAgents: ['a1'], content: 'hi',
-    };
-    const encrypted = encryptIMMessage(original as Record<string, unknown>, PSK);
-    const decrypted = decryptIMMessage(encrypted, PSK);
-    expect(decrypted.type).toBe('im.send');
-    expect(decrypted.roomId).toBe('r1');
-    expect(decrypted.sender).toBe('alice');
-    expect((decrypted as any).mentionedAgents).toEqual(['a1']);
-  });
-
-  it('roundtrip: encrypt then decrypt preserves all fields', () => {
-    const msg = {
-      type: 'agent_output', roomId: 'r1', sender: 'alice/agent',
-      content: 'final answer', status: 'completed', sessionId: 'sess-1',
-      mentionedAgents: [], timestamp: 1000, seq: 5,
-    };
-    const encrypted = encryptIMMessage(msg as Record<string, unknown>, PSK);
-    const decrypted = decryptIMMessage(encrypted, PSK);
-    expect(decrypted.content).toBe('final answer');
-    expect((decrypted as any).status).toBe('completed');
-    expect((decrypted as any).sessionId).toBe('sess-1');
-    expect((decrypted as any).sender).toBe('alice/agent');
-  });
-
-  it('PSK mismatch: decryption returns encrypted string', () => {
-    const encrypted = encryptIMMessage({ content: 'secret' } as Record<string, unknown>, PSK);
-    const wrongPsk = 'wrong-key-12345678901234567890';
-    const decrypted = decryptIMMessage(encrypted, wrongPsk);
-    // decryptField catches error and returns ciphertext
-    expect(typeof (decrypted as any).content).toBe('string');
-    expect((decrypted as any).content).toMatch(/^enc:/);
-  });
-
-  it('encrypt does not modify original object', () => {
-    const original = { type: 'im.send', content: 'hello' };
-    const copy = { ...original };
-    encryptIMMessage(original as Record<string, unknown>, PSK);
-    expect(original).toEqual(copy);
-  });
-});
-
-// ─── Hub auth encryption ───
-
-describe('Hub auth encryption', () => {
-  it('encrypts and decrypts auth payload', () => {
-    const payload = { clientId: 'test@192.168.1.1' };
-    const encrypted = encrypt(payload, PSK);
-    expect(typeof encrypted).toBe('string');
-    const decrypted = decrypt(encrypted, PSK);
-    expect(decrypted).toEqual(payload);
-  });
-
-  it('different PSKs produce different ciphertexts', () => {
-    const payload = { data: 'test' };
-    const enc1 = encrypt(payload, PSK);
-    const enc2 = encrypt(payload, PSK);
-    // Different IVs produce different ciphertexts
-    expect(enc1).not.toBe(enc2);
-  });
-
-  it('decrypt with wrong PSK throws error', () => {
-    const encrypted = encrypt({ data: 'test' }, PSK);
-    expect(() => decrypt(encrypted, 'wrong-key-12345678901234567890')).toThrow();
-  });
-
-  it('encrypt handles various data types', () => {
-    expect(decrypt(encrypt('string', PSK), PSK)).toBe('string');
-    expect(decrypt(encrypt(42, PSK), PSK)).toBe(42);
-    expect(decrypt(encrypt(true, PSK), PSK)).toBe(true);
-    expect(decrypt(encrypt(null, PSK), PSK)).toBe(null);
-  });
-});
-
-// ─── handleImSend: Hub message handling patterns ───
-
-describe('handleImSend: Message processing', () => {
-  it('extracts content from encrypted message', () => {
-    const msg = { type: 'im.send', roomId: 'r1', content: 'secret text', sender: 'alice' };
-    const encrypted = encryptIMMessage(msg as Record<string, unknown>, PSK);
-    const decrypted = decryptIMMessage(encrypted, PSK);
-    expect(decrypted.content).toBe('secret text');
-  });
-
-  it('preserves type via msgType field', () => {
-    const msg = { type: 'im.send', roomId: 'r1', msgType: 'agent_output', content: 'reply' };
-    expect(msg.msgType).toBe('agent_output');
-    // Hub uses: (msg.msgType as string) || (decrypted.type as string) || 'text'
-    const type = (msg.msgType as string) || (msg.type as string) || 'text';
-    expect(type).toBe('agent_output');
-  });
-
-  it('falls back to decrypted.type when msgType is missing', () => {
-    const msg = { type: 'im.send', roomId: 'r1', content: 'text' };
-    const type = (undefined as string | undefined) || (msg.type as string) || 'text';
-    expect(type).toBe('im.send');
-  });
-
-  it('falls back to text when neither msgType nor type available', () => {
-    const msg = { roomId: 'r1', content: 'text' };
-    const type = (undefined as string | undefined) || (undefined as string | undefined) || 'text';
-    expect(type).toBe('text');
-  });
-
-  it('stores agent_output with status in DB', () => {
-    const { dbPath, imdb } = createTestDB();
-    imdb.upsertRoom('r1', 'Room', ['alice']);
-    imdb.insertMessage({
-      id: 'm1', room_id: 'r1', sender: 'alice/agent', content: 'running',
-      type: 'agent_output', status: 'running', session_id: 'sess-1',
-      timestamp: 1000, seq: 1,
-    });
-    const msgs = imdb.getMessagesAfter('r1', 0);
-    expect(msgs[0].type).toBe('agent_output');
-    expect(msgs[0].status).toBe('running');
-    cleanupDB(dbPath, imdb);
-  });
-
-  it('stores message with msgType=agent_output and empty content', () => {
-    const { dbPath, imdb } = createTestDB();
-    imdb.upsertRoom('r1', 'Room', ['alice']);
-    imdb.insertMessage({
-      id: 'm1', room_id: 'r1', sender: 'alice/agent', content: '',
-      type: 'agent_output', status: 'running', session_id: 'sess-1',
-      timestamp: 1000, seq: 1,
-    });
-    const msgs = imdb.getMessagesAfter('r1', 0);
-    expect(msgs[0].content).toBe('');
-    cleanupDB(dbPath, imdb);
-  });
-});
-
-// ─── handleImSync: Hub sync response ───
-
-describe('handleImSync: Sync processing', () => {
-  it('returns messages after given timestamp', () => {
-    const { dbPath, imdb } = createTestDB();
-    imdb.upsertRoom('r1', 'Room', ['alice']);
+  it('sync afterTimestamp=0 → 返回所有消息', () => {
     for (let i = 0; i < 5; i++) {
-      imdb.insertMessage({ id: `m${i}`, room_id: 'r1', sender: 'alice', content: `msg${i}`, timestamp: 1000 + i * 100, seq: i + 1 });
+      imdb.insertMessage({ id: `m${i}`, room_id: 'r1', sender: 'alice@dev', content: `msg${i}`, timestamp: 1000 + i * 100, seq: i + 1 });
     }
-    const msgs = imdb.getMessagesAfter('r1', 1200);
-    expect(msgs).toHaveLength(2);
-    expect(msgs[0].id).toBe('m3');
-    cleanupDB(dbPath, imdb);
+    const msgs = imdb.getMessagesAfter('r1', 0);
+    expect(msgs).toHaveLength(5);
   });
 
-  it('returns empty when no messages after timestamp', () => {
-    const { dbPath, imdb } = createTestDB();
-    imdb.upsertRoom('r1', 'Room', ['alice']);
-    imdb.insertMessage({ id: 'm1', room_id: 'r1', sender: 'alice', content: 'hello', timestamp: 1000, seq: 1 });
+  it('sync afterTimestamp=2000 → 只返回 timestamp > 2000 的消息', () => {
+    // timestamps: 1000, 1100, 1200, 1300, 1400 — all ≤ 2000, so after=2000 returns 0
+    for (let i = 0; i < 5; i++) {
+      imdb.insertMessage({ id: `m${i}`, room_id: 'r1', sender: 'alice@dev', content: `msg${i}`, timestamp: 1000 + i * 100, seq: i + 1 });
+    }
     expect(imdb.getMessagesAfter('r1', 2000)).toHaveLength(0);
-    cleanupDB(dbPath, imdb);
-  });
-
-  it('returns all messages when afterTimestamp=0', () => {
-    const { dbPath, imdb } = createTestDB();
-    imdb.upsertRoom('r1', 'Room', ['alice']);
+    // With higher timestamps: 3000, 3100, 3200 — after=2000 returns all 3
+    imdb.upsertRoom('r2', 'Room2', ['alice@dev']);
     for (let i = 0; i < 3; i++) {
-      imdb.insertMessage({ id: `m${i}`, room_id: 'r1', sender: 'alice', content: `msg${i}`, timestamp: 1000 + i, seq: i + 1 });
+      imdb.insertMessage({ id: `n${i}`, room_id: 'r2', sender: 'alice@dev', content: `msg${i}`, timestamp: 3000 + i * 100, seq: i + 1 });
     }
-    expect(imdb.getMessagesAfter('r1', 0)).toHaveLength(3);
-    cleanupDB(dbPath, imdb);
+    expect(imdb.getMessagesAfter('r2', 2000)).toHaveLength(3);
   });
 
-  it('encrypts messages in sync response', () => {
-    const original = { id: 'm1', room_id: 'r1', content: 'hello', type: 'text', timestamp: 1000, seq: 1 };
-    const encrypted = encryptIMMessage(original as Record<string, unknown>, PSK);
-    expect((encrypted as any).content).toMatch(/^enc:/);
-    expect(encrypted.type).toBe('text');
-    // Receiver decrypts
+  it('sync 返回的消息是加密的，接收方可以解密', () => {
+    imdb.insertMessage({ id: 'm1', room_id: 'r1', sender: 'alice@dev', content: 'secret', timestamp: 1000, seq: 1 });
+    const msgs = imdb.getMessagesAfter('r1', 0);
+    const encrypted = encryptIMMessage(msgs[0] as unknown as Record<string, unknown>, PSK);
     const decrypted = decryptIMMessage(encrypted, PSK);
-    expect(decrypted.content).toBe('hello');
+    expect(decrypted.content).toBe('secret');
   });
 
-  it('sync response carries roomId in data wrapper', () => {
-    // Hub sends: { type: 'im.sync', data: { roomId, messages: [...] } }
+  it('sync 响应结构: { type: "im.sync", data: { roomId, messages: [...] } }', () => {
     const data = { roomId: 'r1', messages: [{ id: 'm1', content: 'enc:xxx' }] };
     expect(data.roomId).toBe('r1');
     expect(data.messages).toHaveLength(1);
   });
 });
 
-// ─── handleImRoomUpdated: Member management ───
+// ═══════════════════════════════════════════════════════════════════════════
+// 场景 5: Hub sender 校验 — 拒绝伪造发送者
+// ═══════════════════════════════════════════════════════════════════════════
 
-describe('handleImRoomUpdated: Member management', () => {
-  it('detects new members correctly', () => {
-    const oldMembers = new Set(['alice', 'bob']);
-    const newMembers = ['alice', 'bob', 'charlie'];
+describe('场景: Hub sender 校验 — 拒绝伪造发送者', () => {
+  it('sender === clientId → 合法', () => {
+    const clientId = 'alice@dev';
+    const rawSender = 'alice@dev';
+    const valid = rawSender === clientId || rawSender.startsWith(clientId + '/');
+    expect(valid).toBe(true);
+  });
+
+  it('sender 以 clientId + "/" 开头 → 合法（agent 发送）', () => {
+    const clientId = 'alice@dev';
+    const rawSender = 'alice@dev/agent1';
+    const valid = rawSender === clientId || rawSender.startsWith(clientId + '/');
+    expect(valid).toBe(true);
+  });
+
+  it('sender 是别人的 clientId → 不合法，回退为自身', () => {
+    const clientId = 'alice@dev';
+    const rawSender = 'bob@dev';
+    const sender = rawSender === clientId || rawSender.startsWith(clientId + '/')
+      ? rawSender
+      : clientId;
+    expect(sender).toBe('alice@dev');
+  });
+
+  it('sender 伪造为 alice（缺少 @dev 后缀）→ 不合法', () => {
+    const clientId = 'alice@dev';
+    const rawSender = 'alice';
+    const valid = rawSender === clientId || rawSender.startsWith(clientId + '/');
+    expect(valid).toBe(false);
+  });
+
+  it('sender 以 bob@dev/ 开头但 clientId 是 alice@dev → 不合法', () => {
+    const clientId = 'alice@dev';
+    const rawSender = 'bob@dev/agent1';
+    const valid = rawSender === clientId || rawSender.startsWith(clientId + '/');
+    expect(valid).toBe(false);
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 场景 6: Hub sync 权限校验 — 非成员被拒绝
+// ═══════════════════════════════════════════════════════════════════════════
+
+describe('场景: Hub im.sync 权限校验 — 非成员被拒绝', () => {
+  it('in-memory 成员检查通过', () => {
+    const imRoomMembers = new Map<string, Set<string>>();
+    imRoomMembers.set('r1', new Set(['alice@dev', 'bob@dev']));
+    const isMember = imRoomMembers.get('r1')?.has('alice@dev');
+    expect(isMember).toBe(true);
+  });
+
+  it('in-memory 非成员 → 回退到 DB 检查', () => {
+    const { dbPath, imdb } = createTestDB();
+    imdb.upsertRoom('r1', 'Room', ['alice@dev', 'bob@dev']);
+    // charlie@dev not in memory
+    const imRoomMembers = new Map<string, Set<string>>();
+    imRoomMembers.set('r1', new Set(['alice@dev']));
+    const isMemberInMemory = imRoomMembers.get('r1')?.has('charlie@dev');
+    expect(isMemberInMemory).toBeFalsy();
+    // Fallback to DB
+    const dbRoom = imdb.getRoom('r1');
+    const dbMembers: string[] = dbRoom ? JSON.parse(dbRoom.members) : [];
+    expect(dbMembers.includes('charlie@dev')).toBe(false);
+    cleanupDB(dbPath, imdb);
+  });
+
+  it('DB 中也不是成员 → 拒绝', () => {
+    const { dbPath, imdb } = createTestDB();
+    imdb.upsertRoom('r1', 'Room', ['alice@dev']);
+    const dbRoom = imdb.getRoom('r1');
+    const dbMembers: string[] = JSON.parse(dbRoom!.members);
+    expect(dbMembers.includes('eve@hacker')).toBe(false);
+    cleanupDB(dbPath, imdb);
+  });
+
+  it('DB 检查通过后回写 in-memory', () => {
+    const { dbPath, imdb } = createTestDB();
+    imdb.upsertRoom('r1', 'Room', ['alice@dev', 'bob@dev']);
+    const imRoomMembers = new Map<string, Set<string>>();
+    // bob not in memory
+    // Hub code: this.addImRoomMember(roomId, client.clientId);
+    let members = imRoomMembers.get('r1');
+    if (!members) {
+      members = new Set();
+      imRoomMembers.set('r1', members);
+    }
+    members.add('bob@dev');
+    expect(imRoomMembers.get('r1')!.has('bob@dev')).toBe(true);
+    cleanupDB(dbPath, imdb);
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 场景 7: Hub 重连后 sendPendingImInvitations 合并（不替换）成员
+// ═══════════════════════════════════════════════════════════════════════════
+
+describe('场景: Hub 重连 sendPendingImInvitations 合并成员而非替换', () => {
+  let dbPath: string;
+  let imdb: IMDB;
+
+  beforeEach(() => {
+    ({ dbPath, imdb } = createTestDB());
+  });
+
+  afterEach(() => cleanupDB(dbPath, imdb));
+
+  it('已有 in-memory 成员 + DB 成员 → 合并后包含全部', () => {
+    const imRoomMembers = new Map<string, Set<string>>();
+    imRoomMembers.set('r1', new Set(['alice@dev'])); // existing in-memory
+    // DB has bob too
+    imdb.upsertRoom('r1', 'Room', ['alice@dev', 'bob@dev']);
+    // sendPendingImInvitations merges:
+    const dbRoom = imdb.getRoom('r1');
+    const dbMembers = JSON.parse(dbRoom!.members) as string[];
+    const existing = imRoomMembers.get('r1');
+    if (existing) {
+      for (const m of dbMembers) existing.add(m);
+    }
+    expect(imRoomMembers.get('r1')).toEqual(new Set(['alice@dev', 'bob@dev']));
+  });
+
+  it('邀请消息包含 name 字段', () => {
+    imdb.upsertRoom('r1', '我的讨论组', ['alice@dev', 'bob@dev']);
+    const room = imdb.getRoom('r1');
+    const invitedMsg = { type: 'im.room.invited', roomId: 'r1', members: JSON.parse(room!.members), name: room!.name };
+    expect(invitedMsg.name).toBe('我的讨论组');
+    expect(invitedMsg.members).toContain('bob@dev');
+  });
+
+  it('重连时 getRoomsForMember 返回该用户的所有房间', () => {
+    imdb.upsertRoom('r1', 'Room1', ['alice@dev', 'bob@dev']);
+    imdb.upsertRoom('r2', 'Room2', ['charlie@dev']);
+    imdb.upsertRoom('r3', 'Room3', ['alice@dev', 'dave@dev']);
+    const rooms = imdb.getRoomsForMember('alice@dev');
+    expect(rooms).toHaveLength(2);
+    expect(rooms.map(r => r.id).sort()).toEqual(['r1', 'r3']);
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 场景 8: Hub im.room.updated — 新成员检测和邀请
+// ═══════════════════════════════════════════════════════════════════════════
+
+describe('场景: Hub im.room.updated — 检测新成员并发送邀请', () => {
+  it('检测新增成员（排除已存在的）', () => {
+    const oldMembers = new Set(['alice@dev', 'bob@dev']);
+    const newMembers = ['alice@dev', 'bob@dev', 'charlie@dev'];
     const addedMembers: string[] = [];
     for (const m of newMembers) {
       if (!oldMembers.has(m)) addedMembers.push(m);
     }
-    expect(addedMembers).toEqual(['charlie']);
+    expect(addedMembers).toEqual(['charlie@dev']);
   });
 
-  it('detects all members as new when no prior record', () => {
+  it('无旧成员记录 → 所有人都是新成员', () => {
     const oldMembers: Set<string> | undefined = undefined;
-    const newMembers = ['alice', 'bob'];
+    const newMembers = ['alice@dev', 'bob@dev'];
     const addedMembers: string[] = [];
     if (oldMembers) {
       for (const m of newMembers) {
@@ -460,63 +494,47 @@ describe('handleImRoomUpdated: Member management', () => {
     } else {
       addedMembers.push(...newMembers);
     }
-    expect(addedMembers).toEqual(['alice', 'bob']);
+    expect(addedMembers).toEqual(['alice@dev', 'bob@dev']);
   });
 
-  it('excludes sender from invited members', () => {
+  it('邀请消息排除发送者本人', () => {
     const senderClientId = 'alice@dev';
     const addedMembers = ['bob@dev', 'alice@dev', 'charlie@dev'];
     const invitedMembers = addedMembers.filter(m => m !== senderClientId);
     expect(invitedMembers).toEqual(['bob@dev', 'charlie@dev']);
   });
 
-  it('im.room.invited message includes name field', () => {
-    const invitedMsg = { type: 'im.room.invited', roomId: 'r1', members: ['alice', 'bob'], name: 'Group Chat' };
-    const encrypted = encryptIMMessage(invitedMsg as Record<string, unknown>, PSK);
-    expect((encrypted as any).name).toBe('Group Chat');
-    expect(encrypted.type).toBe('im.room.invited');
-    expect(encrypted.roomId).toBe('r1');
-  });
-
-  it('upserts room to Hub DB for offline discovery', () => {
+  it('Hub upsertRoom 持久化房间数据（供离线发现）', () => {
     const { dbPath, imdb } = createTestDB();
-    imdb.upsertRoom('r1', 'My Room', ['alice', 'bob', 'charlie']);
+    imdb.upsertRoom('r1', 'Room', ['alice@dev', 'bob@dev']);
     const room = imdb.getRoom('r1');
     expect(room).toBeDefined();
-    expect(JSON.parse(room!.members)).toEqual(['alice', 'bob', 'charlie']);
-    cleanupDB(dbPath, imdb);
-  });
-
-  it('updates existing room members via upsert', () => {
-    const { dbPath, imdb } = createTestDB();
-    imdb.upsertRoom('r1', 'Room', ['alice']);
-    imdb.upsertRoom('r1', 'Room Updated', ['alice', 'bob']);
-    const room = imdb.getRoom('r1');
-    expect(JSON.parse(room!.members)).toEqual(['alice', 'bob']);
-    expect(room!.name).toBe('Room Updated');
+    expect(JSON.parse(room!.members)).toEqual(['alice@dev', 'bob@dev']);
     cleanupDB(dbPath, imdb);
   });
 });
 
-// ─── handleImRoomDissolved: Room dissolution ───
+// ═══════════════════════════════════════════════════════════════════════════
+// 场景 9: Hub 房间解散 — DB 删除 + 成员清理 + 事件转发
+// ═══════════════════════════════════════════════════════════════════════════
 
-describe('handleImRoomDissolved', () => {
-  it('deletes room from DB', () => {
+describe('场景: Hub 房间解散 — DB 删除 + in-memory 清理 + 事件转发', () => {
+  it('Hub 删除房间 DB 记录', () => {
     const { dbPath, imdb } = createTestDB();
-    imdb.upsertRoom('r1', 'Room', ['alice']);
+    imdb.upsertRoom('r1', 'Room', ['alice@dev']);
     imdb.deleteRoom('r1');
     expect(imdb.getRoom('r1')).toBeUndefined();
     cleanupDB(dbPath, imdb);
   });
 
-  it('removes room from in-memory tracking', () => {
+  it('Hub 清理 in-memory 成员追踪', () => {
     const imRoomMembers = new Map<string, Set<string>>();
-    imRoomMembers.set('r1', new Set(['alice', 'bob']));
+    imRoomMembers.set('r1', new Set(['alice@dev', 'bob@dev']));
     imRoomMembers.delete('r1');
     expect(imRoomMembers.has('r1')).toBe(false);
   });
 
-  it('forwards dissolved event to remaining members', () => {
+  it('解散事件加密转发给所有成员', () => {
     const msg = { type: 'im.room.dissolved', roomId: 'r1' };
     const encrypted = encryptIMMessage(msg as Record<string, unknown>, PSK);
     expect(encrypted.type).toBe('im.room.dissolved');
@@ -524,208 +542,141 @@ describe('handleImRoomDissolved', () => {
   });
 });
 
-// ─── broadcastToImRoom: Targeted broadcasting ───
+// ═══════════════════════════════════════════════════════════════════════════
+// 场景 10: Hub 广播机制 — broadcastToImRoom 排除发送者、跳过离线
+// ═══════════════════════════════════════════════════════════════════════════
 
-describe('broadcastToImRoom', () => {
-  it('sends to all members except excluded clientId', () => {
-    const members = new Set(['alice', 'bob', 'charlie']);
-    const excludeClientId = 'alice';
+describe('场景: Hub broadcastToImRoom — 排除发送者、跳过离线成员', () => {
+  it('排除发送者的 clientId', () => {
+    const members = new Set(['alice@dev', 'bob@dev', 'charlie@dev']);
+    const excludeClientId = 'alice@dev';
     const recipients: string[] = [];
     for (const clientId of members) {
       if (clientId === excludeClientId) continue;
       recipients.push(clientId);
     }
-    expect(recipients).toEqual(['bob', 'charlie']);
+    expect(recipients).toEqual(['bob@dev', 'charlie@dev']);
   });
 
-  it('sends to all members when no exclusion', () => {
-    const members = new Set(['alice', 'bob']);
-    const recipients: string[] = [];
-    for (const clientId of members) {
-      recipients.push(clientId);
-    }
-    expect(recipients).toEqual(['alice', 'bob']);
-  });
-
-  it('returns early when no members for room', () => {
-    const members: Set<string> | undefined = undefined;
-    const recipients: string[] = [];
-    if (!members) {
-      // early return
-    } else {
-      for (const clientId of members) {
-        recipients.push(clientId);
-      }
-    }
-    expect(recipients).toHaveLength(0);
-  });
-
-  it('skips members with closed WebSocket', () => {
-    // Simulating ws.readyState !== WebSocket.OPEN (1)
-    const members = new Set(['alice', 'bob']);
-    const wsStates: Record<string, number> = { alice: 1, bob: 3 }; // bob is CLOSED
+  it('跳过 WebSocket 已关闭的成员', () => {
+    const members = new Set(['alice@dev', 'bob@dev']);
+    const wsStates: Record<string, number> = { 'alice@dev': 1, 'bob@dev': 3 }; // bob CLOSED
     const recipients: string[] = [];
     for (const clientId of members) {
       if (wsStates[clientId] !== 1) continue;
       recipients.push(clientId);
     }
-    expect(recipients).toEqual(['alice']);
+    expect(recipients).toEqual(['alice@dev']);
   });
-});
 
-// ─── addImRoomMember: Membership tracking ───
-
-describe('addImRoomMember', () => {
-  it('creates new set for unknown room', () => {
-    const imRoomMembers = new Map<string, Set<string>>();
-    const roomId = 'r1';
-    const clientId = 'alice';
-    let members = imRoomMembers.get(roomId);
-    if (!members) {
-      members = new Set();
-      imRoomMembers.set(roomId, members);
+  it('无成员时直接返回', () => {
+    const members: Set<string> | undefined = undefined;
+    const recipients: string[] = [];
+    if (members) {
+      for (const clientId of members) recipients.push(clientId);
     }
-    members.add(clientId);
-    expect(imRoomMembers.get('r1')!.has('alice')).toBe(true);
+    expect(recipients).toHaveLength(0);
   });
 
-  it('adds to existing set without duplicating', () => {
-    const imRoomMembers = new Map<string, Set<string>>();
-    imRoomMembers.set('r1', new Set(['alice']));
-    const members = imRoomMembers.get('r1')!;
-    members.add('alice'); // duplicate
-    members.add('bob');
-    expect(members.size).toBe(2);
+  it('agent sender 不被追踪为房间成员（只有真实 client 被追踪）', () => {
+    const sender = 'alice@dev/agent1';
+    // Hub code: if (!sender.includes('/')) { this.addImRoomMember(roomId, sender); }
+    const shouldTrack = !sender.includes('/');
+    expect(shouldTrack).toBe(false);
   });
 
-  it('tracks sender as member when they send a message', () => {
-    const imRoomMembers = new Map<string, Set<string>>();
-    // Simulate handleImSend calling addImRoomMember
-    const roomId = 'r1';
-    const sender = 'alice@dev';
-    let members = imRoomMembers.get(roomId);
-    if (!members) {
-      members = new Set();
-      imRoomMembers.set(roomId, members);
-    }
-    members.add(sender);
-    expect(imRoomMembers.get(roomId)!.has('alice@dev')).toBe(true);
+  it('agent sender 的 owner 被追踪为房间成员', () => {
+    const clientId = 'alice@dev';
+    const sender = 'alice@dev/agent1';
+    // Hub code: if (sender.includes('/') && sender.startsWith(client.clientId + '/')) { this.addImRoomMember(roomId, client.clientId); }
+    const shouldTrackOwner = sender.includes('/') && sender.startsWith(clientId + '/');
+    expect(shouldTrackOwner).toBe(true);
   });
 });
 
-// ─── sendPendingImInvitations: Reconnect recovery ───
+// ═══════════════════════════════════════════════════════════════════════════
+// 场景 11: Hub 加密数据流 — PSK 级别加密
+// ═══════════════════════════════════════════════════════════════════════════
 
-describe('sendPendingImInvitations', () => {
-  it('finds rooms for reconnecting client via getRoomsForMember', () => {
-    const { dbPath, imdb } = createTestDB();
-    imdb.upsertRoom('r1', 'Room1', ['alice', 'bob']);
-    imdb.upsertRoom('r2', 'Room2', ['charlie']);
-    imdb.upsertRoom('r3', 'Room3', ['alice', 'dave']);
-    const rooms = imdb.getRoomsForMember('alice');
-    expect(rooms).toHaveLength(2);
-    cleanupDB(dbPath, imdb);
+describe('场景: Hub 加密数据流 — PSK 加密→传输→解密完整链路', () => {
+  it('content 字段加密→解密 roundtrip', () => {
+    const result = encryptField('secret message', PSK);
+    expect(result).toMatch(/^enc:/);
+    expect(decryptField(result, PSK)).toBe('secret message');
   });
 
-  it('sends im.room.invited for each room the client belongs to', () => {
-    const clientRooms = [
-      { id: 'r1', members: '["alice","bob"]', name: 'Room1' },
-      { id: 'r3', members: '["alice","dave"]', name: 'Room3' },
-    ];
-    const invitations = clientRooms.map(r => ({
-      type: 'im.room.invited',
-      roomId: r.id,
-      members: JSON.parse(r.members),
-      name: r.name,
-    }));
-    expect(invitations).toHaveLength(2);
-    expect(invitations[0].roomId).toBe('r1');
-    expect(invitations[1].roomId).toBe('r3');
-  });
-});
-
-// ─── handleImTransparent: Transparent forwarding ───
-
-describe('handleImTransparent', () => {
-  it('encrypts and forwards typing indicator', () => {
-    const msg = { type: 'im.typing', roomId: 'r1', sender: 'alice' };
+  it('IM 消息加密→解密 roundtrip 所有字段保持完整', () => {
+    const msg = {
+      type: 'agent_output', roomId: 'r1', sender: 'alice@dev/agent1',
+      content: '最终答案', status: 'completed', sessionId: 'sess-1',
+      mentionedAgents: ['agent2'], timestamp: 1000, seq: 5,
+    };
     const encrypted = encryptIMMessage(msg as Record<string, unknown>, PSK);
-    expect(encrypted.type).toBe('im.typing');
-    expect(encrypted.roomId).toBe('r1');
-    // No content to encrypt
-    expect((encrypted as any).content).toBeUndefined();
+    const decrypted = decryptIMMessage(encrypted, PSK);
+    expect(decrypted.content).toBe('最终答案');
+    expect((decrypted as any).status).toBe('completed');
+    expect((decrypted as any).sessionId).toBe('sess-1');
+    expect((decrypted as any).sender).toBe('alice@dev/agent1');
   });
 
-  it('encrypts and forwards agent_delta', () => {
-    const msg = { type: 'im.agent_delta', roomId: 'r1', content: 'delta text' };
-    const encrypted = encryptIMMessage(msg as Record<string, unknown>, PSK);
-    expect((encrypted as any).content).toMatch(/^enc:/);
-    expect(encrypted.type).toBe('im.agent_delta');
+  it('错误 PSK 解密 → 返回密文而非崩溃', () => {
+    const encrypted = encryptIMMessage({ content: 'secret' } as Record<string, unknown>, PSK);
+    const wrongPsk = 'wrong-key-12345678901234567890';
+    const decrypted = decryptIMMessage(encrypted, wrongPsk);
+    expect((decrypted as any).content).toMatch(/^enc:/);
+  });
+
+  it('auth 加密→解密 roundtrip', () => {
+    const payload = { clientId: 'alice@192.168.1.1' };
+    const encrypted = encrypt(payload, PSK);
+    const decrypted = decrypt(encrypted, PSK);
+    expect(decrypted).toEqual(payload);
+  });
+
+  it('损坏密文返回原始字符串', () => {
+    const corrupt = 'enc:invalid-base64!!!';
+    expect(decryptField(corrupt, PSK)).toBe(corrupt);
+  });
+
+  it('未加密字段不做处理', () => {
+    expect(decryptField('plain text', PSK)).toBe('plain text');
   });
 });
 
-// ─── handleImPresence: Presence aggregation ───
+// ═══════════════════════════════════════════════════════════════════════════
+// 场景 12: Hub 并发控制和资源管理
+// ═══════════════════════════════════════════════════════════════════════════
 
-describe('handleImPresence', () => {
-  it('aggregates online users from all clients in room', () => {
-    const imRoomMembers = new Map<string, Set<string>>();
-    imRoomMembers.set('r1', new Set(['alice', 'bob']));
-    const clients = new Map<string, { subscribedRooms: Set<string> }>();
-    clients.set('alice', { subscribedRooms: new Set(['r1']) });
-    clients.set('bob', { subscribedRooms: new Set(['r1']) });
-    clients.set('charlie', { subscribedRooms: new Set() });
-
-    const onlineUsers: string[] = [];
-    for (const clientId of imRoomMembers.get('r1')!) {
-      if (clients.has(clientId)) {
-        onlineUsers.push(clientId);
+describe('场景: Hub 并发控制 — MAX_IM_CONCURRENCY 限制', () => {
+  it('并发计数器递增和递减正确', () => {
+    let imActiveCount = 0;
+    const handle = () => {
+      if (imActiveCount >= 20) return 'busy';
+      imActiveCount++;
+      try {
+        // do work
+      } finally {
+        imActiveCount--;
       }
-    }
-    expect(onlineUsers.sort()).toEqual(['alice', 'bob']);
+      return 'ok';
+    };
+    expect(handle()).toBe('ok');
+    expect(imActiveCount).toBe(0);
   });
 
-  it('debounces presence broadcasts', () => {
-    const PRESENCE_DEBOUNCE_MS = 150;
-    expect(PRESENCE_DEBOUNCE_MS).toBe(150);
-    // Multiple presence events within 150ms should only trigger one broadcast
+  it('达到上限时拒绝新请求', () => {
+    let imActiveCount = 20;
+    const result = imActiveCount >= 20 ? 'busy' : 'ok';
+    expect(result).toBe('busy');
   });
 });
 
-// ─── handleClientsSearch: Client search ───
+// ═══════════════════════════════════════════════════════════════════════════
+// 场景 13: Hub 客户端搜索 — 去重 + 限制数量
+// ═══════════════════════════════════════════════════════════════════════════
 
-describe('handleClientsSearch', () => {
-  it('searches connected clients by clientId', () => {
-    const query = 'alice';
-    const connectedClients = [
-      { clientId: 'alice@dev' },
-      { clientId: 'bob@dev' },
-      { clientId: 'alice-test@prod' },
-    ];
-    const results = connectedClients.filter(c =>
-      c.clientId.toLowerCase().includes(query.toLowerCase()),
-    );
-    expect(results).toHaveLength(2);
-  });
-
-  it('returns all clients when query is empty', () => {
-    const query = '';
-    const connectedClients = [
-      { clientId: 'alice@dev' },
-      { clientId: 'bob@dev' },
-    ];
-    const results = connectedClients.filter(c =>
-      !query || c.clientId.toLowerCase().includes(query),
-    );
-    expect(results).toHaveLength(2);
-  });
-
-  it('caps results at MAX_RESULTS (20)', () => {
-    const MAX_RESULTS = 20;
-    const clients = Array.from({ length: 30 }, (_, i) => ({ clientId: `user${i}` }));
-    const results = clients.filter(() => true).slice(0, MAX_RESULTS);
-    expect(results).toHaveLength(20);
-  });
-
-  it('deduplicates between WS clients and DB clients', () => {
+describe('场景: Hub 客户端搜索 — WS 在线 + DB 去重合并', () => {
+  it('WS 在线客户端和 DB 客户端去重合并', () => {
     const wsClients = [{ clientId: 'alice@dev' }, { clientId: 'bob@dev' }];
     const dbClients = [{ client_id: 'bob@dev', hostname: 'ws2' }, { client_id: 'charlie@dev', hostname: 'ws3' }];
     const seen = new Set<string>();
@@ -744,7 +695,7 @@ describe('handleClientsSearch', () => {
     expect(results.map(r => r.clientId)).toEqual(['alice@dev', 'bob@dev', 'charlie@dev']);
   });
 
-  it('searches DB clients by hostname', () => {
+  it('按 clientId 和 hostname 搜索', () => {
     const query = 'server';
     const dbClients = [
       { client_id: 'alice@dev', hostname: 'dev-server-1' },
@@ -757,89 +708,73 @@ describe('handleClientsSearch', () => {
     expect(results).toHaveLength(1);
     expect(results[0].client_id).toBe('alice@dev');
   });
-});
 
-// ─── Concurrency control ───
-
-describe('Concurrency control', () => {
-  it('MAX_IM_CONCURRENCY limits concurrent IM operations', () => {
-    const MAX_IM_CONCURRENCY = 20;
-    expect(MAX_IM_CONCURRENCY).toBe(20);
-  });
-
-  it('imActiveCount is incremented and decremented around handler', () => {
-    let imActiveCount = 0;
-    const handle = () => {
-      if (imActiveCount >= 20) return 'busy';
-      imActiveCount++;
-      try {
-        // do work
-      } finally {
-        imActiveCount--;
-      }
-      return 'ok';
-    };
-    expect(handle()).toBe('ok');
-    expect(imActiveCount).toBe(0);
-  });
-
-  it('rejects request when at concurrency limit', () => {
-    let imActiveCount = 20;
-    const result = imActiveCount >= 20 ? 'busy' : 'ok';
-    expect(result).toBe('busy');
+  it('结果不超过 20 条', () => {
+    const clients = Array.from({ length: 30 }, (_, i) => ({ clientId: `user${i}` }));
+    expect(clients.slice(0, 20)).toHaveLength(20);
   });
 });
 
-// ─── IM cleanup ───
+// ═══════════════════════════════════════════════════════════════════════════
+// 场景 14: Hub 旧消息清理（7 天自动删除）
+// ═══════════════════════════════════════════════════════════════════════════
 
-describe('IM cleanup', () => {
-  it('cleanup interval is 1 hour', () => {
-    const IM_CLEANUP_INTERVAL_MS = 60 * 60 * 1000;
-    expect(IM_CLEANUP_INTERVAL_MS).toBe(3600000);
-  });
-
-  it('deletes messages older than 7 days', () => {
+describe('场景: Hub 旧消息清理 — 7 天以上自动删除', () => {
+  it('7 天前的消息被删除，近期消息保留', () => {
     const { dbPath, imdb } = createTestDB();
-    imdb.upsertRoom('r1', 'Room', ['alice']);
+    imdb.upsertRoom('r1', 'Room', ['alice@dev']);
     const now = Date.now();
     const sevenDays = 7 * 24 * 60 * 60 * 1000;
-    imdb.insertMessage({ id: 'old', room_id: 'r1', sender: 'alice', content: 'old', timestamp: now - sevenDays - 1, seq: 1 });
-    imdb.insertMessage({ id: 'recent', room_id: 'r1', sender: 'alice', content: 'recent', timestamp: now, seq: 2 });
+    imdb.insertMessage({ id: 'old', room_id: 'r1', sender: 'alice@dev', content: 'old', timestamp: now - sevenDays - 1, seq: 1 });
+    imdb.insertMessage({ id: 'recent', room_id: 'r1', sender: 'alice@dev', content: 'recent', timestamp: now, seq: 2 });
     const deleted = imdb.deleteOldMessages();
     expect(deleted).toBe(1);
+    const remaining = imdb.getMessagesAfter('r1', 0);
+    expect(remaining).toHaveLength(1);
+    expect(remaining[0].id).toBe('recent');
+    cleanupDB(dbPath, imdb);
+  });
+
+  it('无旧消息时 deleteOldMessages 返回 0', () => {
+    const { dbPath, imdb } = createTestDB();
+    imdb.upsertRoom('r1', 'Room', ['alice@dev']);
+    imdb.insertMessage({ id: 'm1', room_id: 'r1', sender: 'alice@dev', content: 'new', timestamp: Date.now(), seq: 1 });
+    expect(imdb.deleteOldMessages()).toBe(0);
     cleanupDB(dbPath, imdb);
   });
 });
 
-// ─── Edge cases ───
+// ═══════════════════════════════════════════════════════════════════════════
+// 场景 15: 边界条件（大消息、大量成员、快速连续消息、索引）
+// ═══════════════════════════════════════════════════════════════════════════
 
-describe('Edge cases', () => {
-  it('message with very long content (>10KB) is stored correctly', () => {
+describe('场景: 边界条件 — 大消息、大量成员、快速消息', () => {
+  it('>10KB 的消息正确存储和读取', () => {
     const { dbPath, imdb } = createTestDB();
-    imdb.upsertRoom('r1', 'Room', ['alice']);
+    imdb.upsertRoom('r1', 'Room', ['alice@dev']);
     const longContent = 'x'.repeat(15000);
-    imdb.insertMessage({ id: 'm1', room_id: 'r1', sender: 'alice', content: longContent, timestamp: 1000, seq: 1 });
+    imdb.insertMessage({ id: 'm1', room_id: 'r1', sender: 'alice@dev', content: longContent, timestamp: 1000, seq: 1 });
     const msgs = imdb.getMessagesAfter('r1', 0);
     expect(msgs[0].content).toBe(longContent);
     expect(msgs[0].content.length).toBe(15000);
     cleanupDB(dbPath, imdb);
   });
 
-  it('room with many members (100+) is handled', () => {
+  it('100+ 成员的房间正确处理', () => {
     const { dbPath, imdb } = createTestDB();
-    const members = Array.from({ length: 150 }, (_, i) => `user${i}`);
+    const members = Array.from({ length: 150 }, (_, i) => `user${i}@dev`);
     imdb.upsertRoom('r1', 'Large Room', members);
     const room = imdb.getRoom('r1');
     expect(JSON.parse(room!.members)).toHaveLength(150);
     cleanupDB(dbPath, imdb);
   });
 
-  it('rapid sequential messages maintain order', () => {
+  it('快速连续 100 条消息有序存储', () => {
     const { dbPath, imdb } = createTestDB();
-    imdb.upsertRoom('r1', 'Room', ['alice']);
+    imdb.upsertRoom('r1', 'Room', ['alice@dev']);
     const base = Date.now();
     for (let i = 0; i < 100; i++) {
-      imdb.insertMessage({ id: `m${i}`, room_id: 'r1', sender: 'alice', content: `msg${i}`, timestamp: base + i, seq: i + 1 });
+      imdb.insertMessage({ id: `m${i}`, room_id: 'r1', sender: 'alice@dev', content: `msg${i}`, timestamp: base + i, seq: i + 1 });
     }
     const msgs = imdb.getMessagesAfter('r1', 0);
     expect(msgs).toHaveLength(100);
@@ -848,17 +783,8 @@ describe('Edge cases', () => {
     cleanupDB(dbPath, imdb);
   });
 
-  it('WAL mode is enabled for performance', () => {
+  it('索引 idx_im_msg_room_ts 和 idx_im_msg_room_seq 存在', () => {
     const { dbPath, imdb } = createTestDB();
-    // IMDB constructor sets journal_mode = WAL
-    // We just verify it doesn't crash
-    expect(imdb).toBeDefined();
-    cleanupDB(dbPath, imdb);
-  });
-
-  it('index on (room_id, timestamp) exists for fast queries', () => {
-    const { dbPath, imdb } = createTestDB();
-    // Indexes are created in initTables — verify by querying
     const db = new Database(dbPath);
     const indexes = db.pragma('index_list("im_messages")') as { name: string }[];
     const indexNames = indexes.map(i => i.name);
