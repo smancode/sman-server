@@ -33,6 +33,31 @@ initializedAt: "2026-05-19T01:25:17.622Z"
 
 ## Scan History
 
+### 2026-05-25T00:00:00Z (Commit: d76da6e3)
+**Mode:** 增量更新
+
+**Project Knowledge Skills 更新:**
+- ✅ project-structure: 新增 IM 房间管理系统、并发控制、去抖动优化、集成测试
+- ✅ project-apis: 新增 3 个 WebSocket 消息类型（im.room.invited/updated/dissolved），增强 im.send/im.sync/im.presence
+- ✅ project-external-calls: 增强 WebSocket 服务（房间管理、并发控制、性能优化）
+- ✅ database-schema: 新增 5 张表（im_rooms + 任务管理相关表），表数 24 → 28
+
+**Team Knowledge 聚合:**
+- ✅ knowledge-business: 同步更新（无新贡献）
+- ✅ knowledge-conventions: 同步更新（无新贡献）
+- ✅ knowledge-technical: 同步更新（无新贡献）
+
+**关键变更:**
+- 新增: IM 房间管理系统（im_rooms 表、成员追踪、离线恢复）
+- 新增: WebSocket 消息 upsert 能力（支持 agent lifecycle: running→completed）
+- 新增: 任务管理系统（tasks、task_events、task_assignments、evaluation_reports 4 张表）
+- 增强: 并发控制（最多 20 个并发 IM 操作）
+- 增强: Presence 广播去抖动（150ms 窗口）
+- 新增: IM 端到端集成测试（tests/im-integration.test.ts，954 行）
+- 数据库: im_messages 新增 seq 列（消息排序）
+
+**Git 提交:** bfeee56（本地提交，push 因网络问题暂未推送）
+
 ### 2026-05-21T19:18:35Z (Commit: 312f64fb)
 **Mode:** 增量更新
 
