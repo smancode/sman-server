@@ -794,3 +794,161 @@ describe('场景: 边界条件 — 大消息、大量成员、快速消息', () 
     cleanupDB(dbPath, imdb);
   });
 });
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 场景: 端到端加密消息传递 — nasakim → Hub → kimdai 完整链路
+// ═══════════════════════════════════════════════════════════════════════════
+//
+// 数据流:
+//   nasakim 本地: imMsg(content=明文) → encryptIMMessage(imMsg) → sendToHub({ ...encrypted, type:'im.send', roomId, msgType })
+//   Hub: decryptIMMessage(msg, PSK) → content=明文 → upsertMessage → encryptIMMessage(fullMsg, PSK) → broadcastToImRoom
+//   kimdai 本地: decryptIMMessage(broadcastMsg) → content=明文 → insertMessage → 前端显示
+
+describe('场景: 端到端加密消息传递 — nasakim 发 → Hub 中转 → kimdai 收', () => {
+  it('nasakim 加密 → Hub 解密再加密广播 → kimdai 解密，content 完整一致', () => {
+    // --- Step 1: nasakim 本地构造消息并加密 ---
+    const imMsg = {
+      id: crypto.randomUUID(),
+      roomId: 'r1',
+      sender: 'nasakim@dev',
+      content: '你好 kimdai，这是测试消息',
+      type: 'text',
+      timestamp: Date.now(),
+      seq: 1,
+      mentionedAgents: [],
+    };
+
+    // 本地 Sman 调用 encryptIMMessage（不带 PSK，自动 loadPsk）
+    // 但测试环境没有 hub.key，所以模拟用 PSK 加密
+    const encrypted = encryptIMMessage(imMsg as Record<string, unknown>, PSK);
+
+    // 验证 content 被加密了
+    expect(typeof encrypted.content).toBe('string');
+    expect((encrypted.content as string).startsWith('enc:')).toBe(true);
+    expect(encrypted.content).not.toBe(imMsg.content);
+
+    // 本地 Sman sendToHub: { ...encrypted, type: 'im.send', roomId, msgType }
+    // 重要：spread 在前，显式字段在后，确保 type 不被覆盖
+    const hubbound: Record<string, unknown> = {
+      ...encrypted,
+      type: 'im.send',
+      roomId: 'r1',
+      msgType: 'text',
+    };
+
+    // --- Step 2: Hub 收到消息，解密 ---
+    // Hub handleImSend 的核心逻辑
+    const hubDecrypted = decryptIMMessage(hubbound, PSK);
+    const hubContent = (hubDecrypted.content as string) || '';
+
+    // 验证 Hub 解密得到明文
+    expect(hubContent).toBe('你好 kimdai，这是测试消息');
+    expect(hubbound.type).toBe('im.send');  // type 不被加密影响
+    expect(hubbound.msgType).toBe('text');
+
+    // Hub 构造广播消息
+    const id = (hubbound.id as string) || crypto.randomUUID();
+    const timestamp = (hubbound.timestamp as number) || Date.now();
+    const seq = (hubbound.seq as number) || 0;
+    const type = (hubbound.msgType as string) || (hubDecrypted.type as string) || 'text';
+    const sender = (hubDecrypted.sender as string) || 'nasakim@dev';
+
+    const fullMsg: Record<string, unknown> = {
+      type: 'im.message', id, roomId: 'r1', sender, content: hubContent,
+      msgType: type, timestamp, seq,
+    };
+    for (const key of Object.keys(fullMsg)) {
+      if (fullMsg[key] === undefined) delete fullMsg[key];
+    }
+
+    // Hub 加密后广播
+    const broadcastMsg = encryptIMMessage(fullMsg, PSK);
+
+    // 验证广播消息的 content 被加密了
+    expect(typeof broadcastMsg.content).toBe('string');
+    expect((broadcastMsg.content as string).startsWith('enc:')).toBe(true);
+    expect(broadcastMsg.type).toBe('im.message');  // type 不加密
+
+    // --- Step 3: kimdai 本地收到广播，解密 ---
+    const kimdaiDecrypted = decryptIMMessage(broadcastMsg, PSK);
+
+    // 验证 kimdai 解密得到完整消息
+    expect(kimdaiDecrypted.content).toBe('你好 kimdai，这是测试消息');
+    expect(kimdaiDecrypted.sender).toBe('nasakim@dev');
+    expect(kimdaiDecrypted.roomId).toBe('r1');
+    expect(kimdaiDecrypted.type).toBe('im.message');
+  });
+
+  it('spread 顺序错误时 type 被覆盖，Hub 收到错误的 type', () => {
+    const imMsg = {
+      id: crypto.randomUUID(),
+      roomId: 'r1',
+      sender: 'nasakim@dev',
+      content: 'test',
+      type: 'text',
+      timestamp: Date.now(),
+      seq: 1,
+    };
+    const encrypted = encryptIMMessage(imMsg as Record<string, unknown>, PSK);
+
+    // 错误的顺序：显式字段在前，encrypted 在后
+    // encrypted 包含 type: 'text'（来自原始消息），会覆盖 'im.send'
+    const wrongOrder = {
+      type: 'im.send',
+      roomId: 'r1',
+      msgType: 'text',
+      ...encrypted,  // encrypted.type = 'text' 覆盖了 'im.send'
+    };
+
+    expect(wrongOrder.type).toBe('text');  // BUG: 应该是 'im.send'
+    expect(wrongOrder.type).not.toBe('im.send');
+  });
+
+  it('正确的 spread 顺序时 type 保持 im.send', () => {
+    const imMsg = {
+      id: crypto.randomUUID(),
+      roomId: 'r1',
+      sender: 'nasakim@dev',
+      content: 'test',
+      type: 'text',
+      timestamp: Date.now(),
+      seq: 1,
+    };
+    const encrypted = encryptIMMessage(imMsg as Record<string, unknown>, PSK);
+
+    // 正确的顺序：encrypted 在前，显式字段在后
+    const correctOrder = {
+      ...encrypted,
+      type: 'im.send',
+      roomId: 'r1',
+      msgType: 'text',
+    };
+
+    expect(correctOrder.type).toBe('im.send');
+  });
+
+  it('agent_output 消息的 status/sessionId 不被加密，直接传递', () => {
+    const imMsg = {
+      id: crypto.randomUUID(),
+      roomId: 'r1',
+      sender: 'nasakim@dev/agent1',
+      content: 'agent completed result',
+      type: 'agent_output',
+      status: 'completed',
+      sessionId: 'sess-123',
+      timestamp: Date.now(),
+      seq: 2,
+    };
+
+    const encrypted = encryptIMMessage(imMsg as Record<string, unknown>, PSK);
+    // status 和 sessionId 不被加密
+    expect(encrypted.status).toBe('completed');
+    expect(encrypted.sessionId).toBe('sess-123');
+    expect((encrypted.content as string).startsWith('enc:')).toBe(true);
+
+    const decrypted = decryptIMMessage(encrypted, PSK);
+    expect(decrypted.content).toBe('agent completed result');
+    expect(decrypted.status).toBe('completed');
+    expect(decrypted.sessionId).toBe('sess-123');
+  });
+});
