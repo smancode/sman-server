@@ -2,8 +2,8 @@
 name: project-structure
 description: Project structure knowledge for sman-server (management hub with encrypted reporting, broadcasts, admin dashboard, real-time IM, room collaboration, and task management)
 _scanned:
-  commitHash: 135322221a07233e556d6b6aa887e121c9b3d358
-  scannedAt: "2026-05-24T14:20:00Z"
+  commitHash: d76da6e344e1f66d3c5acec32502380c83ce5a68
+  scannedAt: "2026-05-25T05:52:44Z"
   branch: master
 ---
 
@@ -41,6 +41,7 @@ sman-server/
 │   │   ├── stores/        # Zustand state management
 │   │   ├── lib/           # Utility functions
 │   │   └── locales/       # Internationalization
+├── tests/                 # Integration tests (IM end-to-end)
 ├── data/                  # Runtime data (4 DB files: hub, rooms, tasks, im)
 ├── dist/                  # Build output
 └── package.json
@@ -52,11 +53,12 @@ sman-server/
 |--------|------|---------|
 | Server Core | `src/` | Express API, WebSocket, databases, crypto, task engine |
 | Routes | `src/routes/` | API endpoints (admin, hub-api, report, broadcast, rooms, tasks) |
-| Databases | `src/db*.ts` | HubDB, RoomDB, TaskDB, IMDB (persistent IM storage) |
+| Databases | `src/db*.ts` | HubDB, RoomDB, TaskDB, IMDB (persistent IM storage with rooms) |
 | Crypto | `src/crypto.ts`, `src/im-crypto.ts` | PSK loading, message encryption, IM field encryption |
-| WebSocket | `src/ws-server.ts` | Real-time communication with IM routing and task dispatch |
+| WebSocket | `src/ws-server.ts` | Real-time communication with IM routing, room management, task dispatch |
 | Task Engine | `src/task-engine.ts` | Background task processing with retry logic |
 | Admin UI | `web/src/` | React admin dashboard with tab-based navigation |
+| Integration Tests | `tests/` | End-to-end IM message flow tests |
 
 ## Build and Run
 
@@ -85,6 +87,8 @@ Copy `.env.example` to `.env`. Required: `PSK` (32-char) OR `SMAN_PSK` env var, 
 - PSK loading refactored into `crypto.ts` with environment variable support
 - Client search feature via `im.clients.search` WebSocket message (includes offline clients)
 - Message sequence numbers for ordering and deduplication
+- IM room management with membership tracking and presence broadcasts
+- End-to-end integration tests for complete IM message flows
 
 ## ⚠️ Breaking Changes
 
@@ -121,6 +125,23 @@ Copy `.env.example` to `.env`. Required: `PSK` (32-char) OR `SMAN_PSK` env var, 
 - **Purpose**: Enables `im.clients.search` to query registered clients from database
 - **Breaking**: Constructor signature changed - all call sites must update
 
+### IM Room Management (commit d76da6e)
+- **New Database Table**: `im_rooms` for room persistence
+- **New Features**:
+  - Room membership tracking with `members` JSON array
+  - Room invitations via `im.room.invited` message
+  - Presence broadcasts via `im.presence` message
+  - Room dissolution timing adjusted for proper member notification
+- **New Methods**: `IMDB.upsertRoom()`, `IMDB.getRoom()`, `IMDB.getRoomsForMember()`, `IMDB.deleteRoom()`
+- **New WsHub Features**:
+  - In-memory room membership tracking (`imRoomMembers` Map)
+  - ClientId to WebSocket reverse index (`clientIdToWs` Map)
+  - Debounced presence broadcasts (150ms)
+  - IM message processing concurrency limit (20 concurrent)
+  - Structured logging via `LOG()` function
+  - Pending room invitations sent on authentication
+- **Integration Tests**: New `tests/im-integration.test.ts` with 954 lines covering complete message flows
+
 ## Migration Requirements
 
 ⚠️ **MIGRATION**: If upgrading from pre-6f685b9:
@@ -142,3 +163,9 @@ Copy `.env.example` to `.env`. Required: `PSK` (32-char) OR `SMAN_PSK` env var, 
 1. Update WsHub instantiation to include `hubDB` parameter
 2. In `src/index.ts`: `new WsHub(server, roomDB, imDB, db, PSK, taskEngine)`
 3. HubDB must implement `HubDBLike` interface (requires `getAllClients()` method)
+
+⚠️ **MIGRATION**: If upgrading from pre-d76da6e:
+1. Database schema migration for `im_rooms` table is automatic
+2. Existing in-memory room state will be merged with persisted room data
+3. Room invitations will be sent to existing members on reconnect
+4. Presence broadcasts will start automatically for all active rooms

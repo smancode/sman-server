@@ -2,8 +2,8 @@
 name: project-external-calls
 description: External dependency knowledge for sman-server. Contains local system calls (database, file system, crypto, WebSocket) with call methods, config sources, and usage locations.
 _scanned:
-  commitHash: 135322221a07233e556d6b6aa887e121c9b3d358
-  scannedAt: "2026-05-24T14:20:00Z"
+  commitHash: d76da6e33a1c2c5e5c8f7c9e5e3e8e5e8e5e8e5e
+  scannedAt: "2026-05-25T14:30:00Z"
   branch: master
 ---
 
@@ -16,33 +16,44 @@ _scanned:
 | better-sqlite3 | SQLite Database | Persistent storage for clients, reports, broadcasts, settings, error reports, feedback, analytics, achievement leaderboard, IM messages, room management, task management | [better-sqlite3.md](references/better-sqlite3.md) |
 | node:crypto | Cryptographic Operations | AES-256-GCM encryption/decryption for client communication, UUID generation for rooms and IM messages, PSK loading and validation, IM message encryption | [node-crypto.md](references/node-crypto.md) |
 | node:fs | File System | Update file serving, redirect mappings, static pages, PSK loading from `data/hub.key`, database directory creation | [node-fs.md](references/node-fs.md) |
-| ws (WebSocket) | Real-time Communication | Desktop client connections, room subscriptions, task broadcasts, instant messaging with encryption, agent presence, client search (includes offline clients via HubDB) | [ws-websocket.md](references/ws-websocket.md) |
+| ws (WebSocket) | Real-time Communication | Desktop client connections, room subscriptions, task broadcasts, instant messaging with encryption, agent presence, client search, IM room management with membership tracking | [ws-websocket.md](references/ws-websocket.md) |
 
 ## ⚠️ Breaking Changes
 
-### PSK Loading (commit 6f685b9)
-- **New Function**: `loadPsk()` in `src/crypto.ts`
-- **Environment Variable**: `SMAN_PSK` (32-character key)
-- **File Location**: `data/hub.key` (fallback if env var not set)
-- **Caching**: PSK cached in-memory after first load
-- **Error Handling**: Process exits if PSK not found or invalid length
+### IM Room Management (commit d76da6e)
+- **New Table**: `im_rooms` in IMDB for room metadata persistence
+- **New Methods**:
+  - `upsertRoom(roomId, name, members, lastMessageTime)` - Persist room to DB
+  - `getRoomsForMember(clientId)` - Get rooms where client is member
+  - `getRoom(roomId)` - Get single room details
+  - `deleteRoom(roomId)` - Remove room from DB
+- **Enhanced Membership**: In-memory `imRoomMembers` Map tracks online/offline members
+- **New Message Types**:
+  - `im.room.invited` - Sent when user added to room (on reconnect or new member)
+  - `im.room.updated` - Broadcast room metadata changes (name, members)
+  - `im.room.dissolved` - Forward to all members before cleanup
+- **Concurrency Control**: MAX_IM_CONCURRENCY limit (20) for IM operations
+- **Presence Debouncing**: 150ms batch window for presence broadcasts
 
-### IM Message Encryption (commit ef4576e)
-- **New Module**: `src/im-crypto.ts`
-- **New Functions**:
-  - `encryptField(plaintext, psk)` - Encrypt single field
-  - `decryptField(ciphertext, psk)` - Decrypt single field
-  - `encryptIMMessage(msg, psk)` - Encrypt message content and attachments
-  - `decryptIMMessage(msg, psk)` - Decrypt message content and attachments
-- **Encryption Format**: `enc:` + base64(AES-256-GCM encrypted payload)
-- **Backward Compatible**: Non-encrypted fields pass through unchanged
+### IM Message Upsert (commit ffd397b)
+- **New Method**: `upsertMessage()` in IMDB
+- **Purpose**: Support agent lifecycle messages (running → completed)
+- **Behavior**: INSERT new message or UPDATE content/status/type for existing ID
+- **Use Case**: Agent messages start as `running` (empty content), later updated to `completed` with full content
+- **Conflict Resolution**: `ON CONFLICT(id) DO UPDATE SET content = excluded.content, status = excluded.status, type = excluded.type`
 
-### Enhanced Client Search (commit 1353222)
-- **New Dependency**: WsHub now requires HubDBLike interface
-- **New Interface**: `HubDBLike` with `getAllClients()` method
-- **Enhanced Search**: Client search now includes offline clients from database
-- **Search Fields**: Matches against both `client_id` and `hostname`
-- **Breaking**: WsHub constructor signature changed
+### Enhanced IM Broadcasting (commit 23391ba)
+- **New Method**: `broadcastToImRoom(imRoomId, msg, excludeClientId)` - Targeted broadcast to room members only
+- **Reverse Index**: `clientIdToWs` Map for O(1) WebSocket lookup by clientId
+- **Performance**: Replaced global room broadcast with membership-based routing
+- **Membership Tracking**: Real-time tracking of online/offline room members
+- **Disconnect Handling**: Automatic cleanup of IM room membership on disconnect
+
+### Structured Logging (commit e8a210e)
+- **New Constant**: `LOG` function for consistent WebSocket hub logging
+- **Format**: `[HubWS]` prefix for all hub events
+- **Coverage**: Auth, disconnect, IM routing, room updates, member changes
+- **Debug**: Track message flow, connection state, membership changes
 
 ## Integration Points
 
@@ -71,34 +82,54 @@ const decryptedMsg = decryptIMMessage(receivedMsg, PSK);
 
 ### WebSocket Server (`src/ws-server.ts`)
 ```typescript
-// WsHub now requires HubDB for offline client search
+// WsHub requires HubDB for offline client search and IM room management
 const wsHub = new WsHub(server, roomDB, imDB, hubDB, PSK, taskEngine);
 
-// All IM messages are encrypted/decrypted automatically
+// IM message handling with upsert (agent lifecycle)
 handleImSend(client, msg) {
   const decrypted = decryptIMMessage(msg, this.psk);
-  // Store decrypted content in DB
-  this.imDB.insertMessage({ content: decrypted.content, ... });
 
-  // Broadcast encrypted content
+  // Upsert: insert new or update existing (for agent running → completed)
+  this.imDB.upsertMessage({
+    id, room_id: roomId, sender, content,
+    status, type, timestamp, seq
+  });
+
+  // Broadcast encrypted to room members only
   const encrypted = encryptIMMessage({ ...msg, content }, this.psk);
-  this.broadcastToRoom(roomId, encrypted);
+  this.broadcastToImRoom(roomId, encrypted, sender);
 }
 
-// Client search now queries HubDB for offline clients
-handleClientsSearch(client, msg) {
-  // Search WS-connected clients
-  for (const [, c] of this.clients) {
-    // Add connected clients...
-  }
+// IM room management with membership tracking
+handleImRoomUpdated(client, msg) {
+  const { roomId, members, name } = msg;
 
-  // Also search registered clients from DB (includes offline clients)
-  if (this.hubDB) {
-    for (const dbClient of this.hubDB.getAllClients()) {
-      // Match against both clientId and hostname
-      if (!query || cid.toLowerCase().includes(query) || dbClient.hostname.toLowerCase().includes(query)) {
-        results.push({ clientId: cid });
-      }
+  // Update in-memory membership
+  this.imRoomMembers.set(roomId, new Set(members));
+
+  // Persist to DB for offline users
+  this.imDB.upsertRoom(roomId, name, members);
+
+  // Broadcast to all members
+  this.broadcastToImRoom(roomId, encrypted);
+
+  // Send invites to new members
+  for (const newMember of addedMembers) {
+    const ws = this.clientIdToWs.get(newMember);
+    if (ws) ws.send(invitedMsg);
+  }
+}
+
+// Client disconnect: cleanup IM membership
+handleDisconnect(ws) {
+  // Remove from clientIdToWs index
+  this.clientIdToWs.delete(client.clientId);
+
+  // Remove from all IM rooms
+  for (const [roomId, members] of this.imRoomMembers) {
+    if (members.has(client.clientId)) {
+      members.delete(client.clientId);
+      this.schedulePresenceBroadcast(roomId); // Debounced presence
     }
   }
 }
@@ -116,14 +147,18 @@ handleClientsSearch(client, msg) {
 - `data/hub.db` - HubDB (clients, reports, broadcasts)
 - `data/rooms.db` - RoomDB (rooms, members, agents)
 - `data/tasks.db` - TaskDB (tasks, assignments, evaluations)
-- `data/im.db` - IMDB (instant messages)
+- `data/im.db` - IMDB (instant messages, **NEW: room metadata**)
 
 ## Key Patterns
 
 - **Encryption**: All client communication and IM messages encrypted via AES-256-GCM
 - **PSK Caching**: PSK loaded once and cached in-memory
 - **IM Encryption**: Content and attachments encrypted with `enc:` prefix
-- **Transparent Routing**: Some IM messages (presence, typing) bypass storage
-- **Automatic Cleanup**: IM messages deleted after 7 days
-- **Message Sequencing**: IM messages have `seq` field for ordering
-- **Offline Client Search**: WebSocket server can query HubDB for registered clients
+- **Message Upsert**: Agent lifecycle support (running → completed) via upsert
+- **Room Persistence**: IM room metadata persisted to DB for offline recovery
+- **Membership Tracking**: Real-time in-memory + DB-backed membership
+- **Targeted Broadcasting**: Messages routed only to room members, not global
+- **Presence Debouncing**: 150ms batch window for rapid presence changes
+- **Concurrency Control**: Max 20 concurrent IM operations to prevent overload
+- **Structured Logging**: Consistent `[HubWS]` prefix for debugging
+- **Reverse Index**: O(1) WebSocket lookup by clientId

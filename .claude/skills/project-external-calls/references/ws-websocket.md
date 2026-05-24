@@ -24,17 +24,33 @@ wss.on('connection', (ws) => {
 });
 ```
 
-### Room Management
+### IM Room Management (NEW)
 ```typescript
-// Subscribe to room
-const room = 'workspace-123';
-if (!rooms.has(room)) rooms.set(room, new Set());
-rooms.get(room)!.add(ws);
+// Track room membership
+private imRoomMembers = new Map<string, Set<string>>(); // roomId -> clientIds
+private clientIdToWs = new Map<string, WebSocket>();    // clientId -> WebSocket
 
-// Broadcast to room
-for (const client of rooms.get(room) || []) {
-  if (client.readyState === WebSocket.OPEN) {
-    client.send(JSON.stringify(payload));
+// Add member to room
+addImRoomMember(roomId, clientId) {
+  let members = this.imRoomMembers.get(roomId);
+  if (!members) {
+    members = new Set();
+    this.imRoomMembers.set(roomId, members);
+  }
+  members.add(clientId);
+}
+
+// Broadcast to room members only
+broadcastToImRoom(roomId, msg, excludeClientId) {
+  const members = this.imRoomMembers.get(roomId);
+  if (!members) return;
+  const data = JSON.stringify(msg);
+  for (const clientId of members) {
+    if (clientId === excludeClientId) continue;
+    const ws = this.clientIdToWs.get(clientId);
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      try { ws.send(data); } catch { /* skip disconnected */ }
+    }
   }
 }
 ```
@@ -45,7 +61,13 @@ for (const client of rooms.get(room) || []) {
 - **Server attachment**: Attached to main HTTP server in `src/index.ts`
 - **Dependencies**: Requires HTTP server instance, RoomDB, IMDB, HubDB (via HubDBLike interface), PSK, TaskEngine
 - **Initialization**: `src/index.ts` - Creates `WsHub` after server starts listening
-- **⚠️ Breaking Change**: Constructor signature changed in commit 1353222 - now requires `hubDB` parameter
+- **Constants**:
+  - `AUTH_TIMEOUT_MS`: 5000 (5 seconds to auth)
+  - `STALE_CHECK_INTERVAL_MS`: 60000 (1 minute)
+  - `STALE_THRESHOLD_MS`: 90000 (90 seconds)
+  - `IM_CLEANUP_INTERVAL_MS`: 3600000 (1 hour)
+  - `PRESENCE_DEBOUNCE_MS`: 150 (presence broadcast batching)
+  - `MAX_IM_CONCURRENCY`: 20 (concurrent IM operation limit)
 
 ## Call Locations
 
@@ -61,9 +83,10 @@ for (const client of rooms.get(room) || []) {
 - Authenticated connections (PSK-based)
 - Room-based pub/sub for workspace collaboration
 - Task status updates and broadcasts
-- **Instant messaging with encryption and sync**
-- **Agent typing indicators and presence broadcasts**
-- **Client search and discovery** (NEW)
+- **Instant messaging with encryption, sync, and room management**
+- **Agent typing indicators and presence broadcasts (debounced)**
+- **Client search and discovery** (includes offline clients via HubDB)
+- **IM room membership tracking with persistence**
 - Stale connection cleanup (90-second timeout)
 - Automatic IM message cleanup (7-day retention)
 
@@ -72,7 +95,7 @@ for (const client of rooms.get(room) || []) {
 1. **Connection timeout**: 5 seconds to send auth message
 2. **Auth message**: Encrypted payload with `{ type: 'auth.psk', payload, timestamp, pskVersion: 1 }`
 3. **Validation**: Decrypt payload, validate PSK version and timestamp (±5 minutes)
-4. **Success**: Mark as authenticated, allow operations
+4. **Success**: Mark as authenticated, allow operations, send pending IM room invitations
 5. **Failure**: Close connection with error code (4001-4005)
 
 ## Message Types
@@ -97,12 +120,14 @@ for (const client of rooms.get(room) || []) {
 - `agent.list` - List agents in room
 
 **Instant Messaging**
-- `im.send` - Send encrypted message to room (with quote, mentions, attachments, seq)
-- `im.sync` - Sync encrypted messages after timestamp
+- `im.send` - Send encrypted message to room (with quote, mentions, attachments, seq, status)
+- `im.sync` - Sync encrypted messages after timestamp (with membership verification)
 - `im.agent_delta` - Agent list change notification (transparent, encrypted)
-- `im.presence` - User presence notification (transparent, encrypted)
+- `im.presence` - User presence notification (triggers debounced broadcast)
 - `im.typing` - Typing indicator (transparent, encrypted)
-- `im.clients.search` - Search connected clients (NEW - commit 5e4e0b4)
+- `im.room.dissolved` - Room dissolution notification (forwards to members, then cleanup)
+- `im.room.updated` - Room metadata update (name, members) - persists to DB, broadcasts, invites new members
+- `im.clients.search` - Search connected clients (includes offline clients from HubDB)
 
 **Task Management**
 - `task.*` - Task-related messages (handled by ws-task-handler)
@@ -134,13 +159,15 @@ for (const client of rooms.get(room) || []) {
 **Instant Messaging**
 - `im.message` - New encrypted message broadcast to room
 - `im.sync` - Message sync response with encrypted messages array
-- `im.clients.search` - Client search results (NEW - commit 5e4e0b4)
+- `im.presence` - Presence broadcast (online users list)
+- `im.room.invited` - Room invitation (sent on reconnect or when added to room)
+- `im.clients.search` - Client search results
 
 ## IM Feature
 
 **Purpose**: Real-time encrypted instant messaging within rooms
 
-**Message Encryption** (NEW - commit ef4576e):
+**Message Encryption**:
 - Content and attachments encrypted via `im-crypto.ts`
 - Encryption format: `enc:` + base64(AES-256-GCM payload)
 - Automatic decryption on receive, encryption on send/broadcast
@@ -148,22 +175,51 @@ for (const client of rooms.get(room) || []) {
 
 **Message Storage**:
 - Messages stored in `im.db` via IMDB class
+- **Upsert support**: Agent lifecycle (running → completed) via `upsertMessage()`
 - Automatic cleanup of messages older than 7 days
-- Supports quotes, mentions, attachments, session tracking
-- **Sequence numbers** for ordering and deduplication (NEW - commit 6d235fa)
+- Supports quotes, mentions, attachments, session tracking, status
+- Sequence numbers for ordering and deduplication
 
 **Message Sync**:
 - `im.sync` returns encrypted messages after specified timestamp
+- **Membership verification**: Checks in-memory first, then DB fallback
 - Default limit: 200 messages
 - Ordered by timestamp ascending
 - Messages include `seq` field for client-side ordering
 
+**IM Room Management** (NEW - commit d76da6e):
+- **Room Persistence**: `im_rooms` table stores room metadata (name, members, lastMessageTime)
+- **Membership Tracking**: In-memory `imRoomMembers` Map + DB persistence
+- **On Auth**: Send pending room invitations for rooms where client is member
+- **Room Updates**: `im.room.updated` broadcasts to members, persists to DB, invites new members
+- **Room Dissolution**: `im.room.dissolved` forwards to all members, then cleans up DB and memory
+- **Disconnect Handling**: Automatic cleanup of IM membership and presence broadcast
+
 **Transparent Messages** (passed through without database storage):
 - `im.agent_delta` - Agent list changes (encrypted)
-- `im.presence` - User presence updates (encrypted)
+- `im.presence` - User presence updates (triggers debounced broadcast)
 - `im.typing` - Typing indicators (encrypted)
 
-## Client Search Feature (ENHANCED - commit 1353222)
+## Concurrency Control (NEW)
+
+**IM Operation Limiting**:
+- **Max Concurrent**: 20 IM operations (send, sync, room.updated)
+- **Guard**: `imActiveCount` counter incremented/decremented per operation
+- **Rejection**: Returns "Server busy, try again" if limit exceeded
+- **Purpose**: Prevent overload from burst IM traffic
+
+## Presence Debouncing (NEW)
+
+**Purpose**: Batch rapid presence changes to reduce broadcast overhead
+
+**Mechanism**:
+- **Debounce Window**: 150ms
+- **Per-Room Timers**: `pendingPresenceBroadcasts` Map stores setTimeout timers
+- **Trigger**: Member join/leave, disconnect, explicit `im.presence` message
+- **Broadcast**: Aggregates online users and sends single `im.presence` per room
+- **Cleanup**: Timers cleared on graceful shutdown
+
+## Client Search Feature
 
 **Purpose**: Real-time client discovery and presence (including offline clients)
 
@@ -176,15 +232,13 @@ for (const client of rooms.get(room) || []) {
   - Case-insensitive substring match on `clientId`
   - Returns max 20 results
   - Deduplicates clients with multiple connections
-- **Phase 2** (NEW): Search registered clients from HubDB
+- **Phase 2**: Search registered clients from HubDB
   - Only executed if results < 20 after Phase 1
   - Queries `hubDB.getAllClients()` for offline clients
   - Matches against both `client_id` AND `hostname`
   - Case-insensitive substring match
   - Deduplicates against already-seen clients
 - **Use Case**: Find users to invite to rooms or direct messaging, regardless of online status
-
-**⚠️ Breaking Change**: Requires WsHub to be instantiated with `hubDB` parameter (HubDBLike interface)
 
 ## Stale Connection Cleanup
 
@@ -203,7 +257,7 @@ for (const client of rooms.get(room) || []) {
 
 ```typescript
 process.on('SIGTERM', () => {
-  wsHub.close();
+  wsHub.close();  // Clears presence debounce timers
   server.close(() => {
     imDB.close();
     roomDB.close();
@@ -214,28 +268,23 @@ process.on('SIGTERM', () => {
 
 ## Breaking Changes
 
-### WsHub Constructor Signature (commit 1353222)
-- **Before**: `new WsHub(server, roomDB, imDB, psk, taskEngine?)`
-- **After**: `new WsHub(server, roomDB, imDB, hubDB, psk, taskEngine?)`
-- **New Parameter**: `hubDB` (4th parameter) - HubDBLike interface for offline client search
-- **Impact**: All WsHub instantiation sites must be updated
-- **Interface**: HubDB must implement `getAllClients()` method
-- **Migration**: Update `src/index.ts` to pass `db` as 4th parameter
+### IM Room Management (commit d76da6e)
+- **New Table**: `im_rooms` in IMDB
+- **New Message Types**: `im.room.invited`, `im.room.updated`, `im.room.dissolved`
+- **Enhanced Membership**: In-memory + DB persistence
+- **Presence Debouncing**: 150ms batch window
+- **Concurrency Control**: Max 20 concurrent IM operations
 
-### IM Message Encryption (commit ef4576e)
-- **Before**: IM messages in plaintext
-- **After**: IM messages encrypted with `enc:` prefix
-- **Impact**: Clients must support decryption of `enc:` prefixed content
-- **Backward Compatible**: Non-encrypted fields pass through unchanged
+### IM Message Upsert (commit ffd397b)
+- **New Method**: `upsertMessage()` for agent lifecycle
+- **Use Case**: Agent messages (running → completed)
+- **Conflict Resolution**: UPDATE content/status/type on existing ID
 
-### Message Sequence Numbers (commit 6d235fa)
-- **Before**: Messages ordered by timestamp only
-- **After**: Messages have explicit `seq` field
-- **Database**: Automatic migration (ALTER TABLE with default value 0)
-- **Index**: New `idx_im_msg_room_seq` index for efficient queries
+### Enhanced Broadcasting (commit 23391ba)
+- **New Method**: `broadcastToImRoom()` for targeted routing
+- **Reverse Index**: `clientIdToWs` Map for O(1) lookups
+- **Performance**: Membership-based vs global broadcast
 
-### Client Search Feature (commit 5e4e0b4)
-- **New Message Type**: `im.clients.search`
-- **Use Case**: Client discovery for invitations and direct messaging
-- **Max Results**: 20 clients per search
-- **Enhanced in commit 1353222**: Now includes offline clients from HubDB
+### Structured Logging (commit e8a210e)
+- **New Pattern**: `LOG` function with `[HubWS]` prefix
+- **Coverage**: Auth, routing, IM, room updates, membership

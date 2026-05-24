@@ -2,8 +2,8 @@
 name: knowledge-conventions
 description: "Development conventions for sman-server. Verified against code."
 _scanned:
-  commitHash: 5e4e0b43e7ba530e3efcd3e68e9814c38c250ae2
-  scannedAt: "2026-05-23T00:00:00.000Z"
+  commitHash: d76da6e344e1f66d3c5acec32502380c83ce5a68
+  scannedAt: "2026-05-25T00:00:00.000Z"
   branch: "master"
 ---
 

@@ -2,8 +2,8 @@
 name: project-apis
 description: API endpoint knowledge for sman-server. Contains all HTTP endpoints with signatures, parameters, business flows, and source references.
 _scanned:
-  commitHash: 135322221a07233e556d6b6aa887e121c9b3d358
-  scannedAt: "2026-05-24T00:00:00Z"
+  commitHash: d76da6e3c86e5e8d9228943c9fa88312e8cf3a1c
+  scannedAt: "2026-05-25T00:00:00Z"
   branch: "master"
 ---
 
@@ -31,23 +31,29 @@ POST /api/hub/rooms | POST /api/hub/rooms/:id | POST /api/hub/rooms/:id/join | P
 GET /health | GET /api/health | POST /api/pageview | GET /download/:filename | GET /updates/sman/:filename | GET /download/windows-x64 | GET /download/macos-arm
 
 ## WebSocket API (ws://host/ws, 5s auth timeout)
-auth.psk/auth.ok | room.* | agent.* | im.send/im.sync/im.message/im.agent_delta/im.presence/im.typing/im.room.dissolved/im.clients.search | task.* | evaluation.* | error
+auth.psk/auth.ok | room.* | agent.* | im.send/im.sync/im.message/im.agent_delta/im.presence/im.typing/im.room.dissolved/im.room.updated/im.room.invited/im.clients.search | task.* | evaluation.* | error
 Close codes: 4001-4005
 
-## Summary of Changes (Since 312f64fb)
+## Summary of Changes (Since 1353222)
 
 ### New Features
-- **IM Encryption**: `im-crypto.ts` for PSK-encrypted WebSocket transmission
-- **IM Sequence Numbers**: `seq` column in `im_messages` for ordering/sync
-- **Client Search Enhanced**: `im.clients.search` now includes offline clients from DB (max 20, matches clientId/hostname)
-- **Hub API WebSocket Integration**: `createHubApiRouter()` accepts optional `wsHub` for real-time task broadcasts
+- **IM Room Membership Tracking**: Hub now tracks IM room membership in-memory (`imRoomMembers` Map) for efficient presence broadcasts
+- **IM Presence Broadcasting**: Debounced presence broadcasts (150ms) to avoid flooding on rapid joins/leaves
+- **IM Room Invitation Flow**: `im.room.invited` message sent to newly added members, persists to DB for offline discovery
+- **IM Room Dissolution**: `im.room.dissolved` broadcast before deleting membership, prevents orphaned state
+- **IM Message Upsert**: Changed from INSERT to upsert for agent lifecycle (running→completed updates)
+- **IM Concurrency Guard**: Max 20 concurrent IM operations to prevent server overload
+- **ClientID Reverse Index**: O(1) WebSocket lookup by clientId for targeted broadcasts
 
 ### Bug Fixes
-- **IM Field Reading**: Fixed `type`, `status`, `attachments`, `sessionId` to read from decrypted payload (`src/ws-server.ts:427-430`)
-
-### Schema Changes
-- `im_messages`: Added `seq INTEGER` ⚠️ MIGRATION (handled in `db-im.ts`)
-- `achievement_leaderboard`: Added `dimension_scores TEXT` ⚠️ MIGRATION (handled in `db.ts`)
+- **IM Field Validation**: Allow empty content for agent status updates (running state), validate sender field
+- **IM Broadcast Targeting**: Changed from `broadcastToRoom` to `broadcastToImRoom` for precise member-only delivery
+- **IM Message Fields**: Read `type`, `status`, `attachments`, `sessionId` from decrypted payload, not wrapper
 
 ### Breaking Changes
-None - all backward compatible with automatic migrations.
+None - all backward compatible with graceful fallbacks (DB lookup on membership check failures).
+
+### Performance Improvements
+- **Debounced Presence**: Rapid joins/leaves batched into single broadcast per room
+- **Efficient Lookups**: clientId→WebSocket Map eliminates O(n) client iteration
+- **IM Cleanup**: Hourly deletion of messages >7 days old (configurable)

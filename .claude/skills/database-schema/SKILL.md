@@ -2,110 +2,58 @@
 name: database-schema
 description: Database schema knowledge for sman-server: table structures, relationships, indexes, and DDL
 _scanned:
-  commitHash: 135322221a07233e556d6b6aa887e121c9b3d358
-  scannedAt: "2026-05-24T00:00:00Z"
+  commitHash: d76da6e344e1f66d3c5acec32502380c83ce5a68
+  scannedAt: "2026-05-25T00:00:00Z"
   branch: "master"
 ---
 
 # Database Schema Knowledge
 
-Database schema knowledge for sman-server: table structures, relationships, indexes, and DDL.
-
-## Database Overview
-
-- **Engine**: better-sqlite3 (WAL mode enabled)
-- **Database Files**:
-  - `data/hub.db` - Main hub database (HubDB)
-  - `data/rooms.db` - Room and agent management (RoomDB)
-  - `data/im.db` - Instant messaging (IMDB)
-  - `data/tasks.db` - Task execution tracking (TaskDB)
-- **Table Count**: 24 tables across 4 database files
-- **ORM**: No ORM - raw SQL with better-sqlite3
+## Overview
+- **Engine**: better-sqlite3 (WAL mode)
+- **Files**: hub.db, rooms.db, im.db, tasks.db (28 tables total)
+- **Pattern**: Raw SQL, no ORM, prepared statements for performance
 
 ## Core Tables
 
-| Table | Database | Purpose | Reference |
-|-------|----------|---------|-----------|
-| `clients` | hub.db | Client registration and tracking | `references/clients.md` |
-| `reports` | hub.db | Client usage reports | `references/reports.md` |
-| `broadcasts` | hub.db | Broadcast notifications | `references/broadcasts.md` |
-| `read_log` | hub.db | Broadcast read tracking (many-to-many) | `references/read_log.md` |
-| `hub_settings` | hub.db | Hub configuration settings | `references/hub_settings.md` |
-| `error_reports` | hub.db | Client error reporting | `references/error_reports.md` |
-| `feedback` | hub.db | User feedback submissions | `references/feedback.md` |
-| `page_views` | hub.db | Daily page view aggregation | `references/page_views.md` |
-| `page_view_logs` | hub.db | Page view log entries | `references/page_view_logs.md` |
-| `download_logs` | hub.db | Download tracking | `references/download_logs.md` |
-| `client_workspaces` | hub.db | Client workspace mapping | `references/client_workspaces.md` |
-| `achievement_leaderboard` | hub.db | Achievement system leaderboard | `references/achievement_leaderboard.md` |
-| `achievement_leaderboard_log` | hub.db | Achievement change log | `references/achievement_leaderboard_log.md` |
-| `rooms` | rooms.db | Multi-purpose room definitions | `references/rooms.md` |
-| `room_members` | rooms.db | Room membership tracking | `references/room_members.md` |
-| `agents` | rooms.db | Agent registration and status | `references/agents.md` |
-| `im_messages` | im.db | Instant messaging messages | `references/im_messages.md` |
+| DB | Tables | Purpose |
+|----|--------|---------|
+| hub.db (13) | clients, reports, broadcasts, read_log, hub_settings, error_reports, feedback, page_views, page_view_logs, download_logs, client_workspaces, achievement_leaderboard, achievement_leaderboard_log | Client tracking, broadcasts, analytics |
+| rooms.db (3) | rooms, room_members, agents | Room management, agent registration |
+| im.db (2) | im_messages, im_rooms | Instant messaging |
+| tasks.db (4) | tasks, task_events, evaluation_reports, task_assignments | Task lifecycle management |
 
-## Schema Changes Summary (Since 312f64fb)
+## Schema Changes (Since 1353222)
 
 ### New Tables
-None - all tables existed in previous version.
+- `im_rooms`: IM room metadata (members, last_message_time)
 
 ### Modified Tables
+| Table | Change | Migration |
+|-------|--------|-----------|
+| `im_messages` | Added `seq INTEGER DEFAULT 0` | ⚠️ Yes |
+| `agents` | Added `workspace_name TEXT` | ⚠️ Yes |
+| `achievement_leaderboard` | Added `dimension_scores TEXT` | ⚠️ Yes |
 
-| Table | Change | Impact | Migration |
-|-------|--------|--------|-----------|
-| `im_messages` | Added `seq INTEGER` column | Enables message ordering and sync | ⚠️ MIGRATION |
-| `achievement_leaderboard` | Added `dimension_scores TEXT` column | Stores multi-dimensional achievement scores | ⚠️ MIGRATION |
-
-### New Indexes
-
-| Table | Index | Purpose |
-|-------|-------|---------|
-| `im_messages` | `idx_im_msg_room_seq` | Message retrieval by sequence number |
-
-## Migration Requirements
-
-### ⚠️ MIGRATION: Add seq column to im_messages
-
-```sql
-ALTER TABLE im_messages ADD COLUMN seq INTEGER DEFAULT 0;
-CREATE INDEX IF NOT EXISTS idx_im_msg_room_seq ON im_messages(room_id, seq);
-```
-
-**Impact**: Required for message sync and ordering. Already handled in `src/db-im.ts` with try-catch for existing databases.
-
-**Applied in**: `src/db-im.ts` lines 49-59
-
-### ⚠️ MIGRATION: Add dimension_scores to achievement_leaderboard
-
-```sql
-ALTER TABLE achievement_leaderboard ADD COLUMN dimension_scores TEXT NOT NULL DEFAULT '{}';
-```
-
-**Impact**: Required for multi-dimensional leaderboard. Already handled in `src/db.ts` with try-catch.
-
-**Applied in**: `src/db.ts` lines 206-210
-
-## Database File Locations
-
-- **Hub DB**: `data/hub.db` (managed by `HubDB` in `src/db.ts`)
-- **Rooms DB**: `data/rooms.db` (managed by `RoomDB` in `src/db-rooms.ts`)
-- **IM DB**: `data/im.db` (managed by `IMDB` in `src/db-im.ts`)
-- **Tasks DB**: `data/tasks.db` (managed by `TaskDB` in `src/db-tasks.ts`)
+### Migrations Applied
+All migrations handled in-code with try-catch:
+- `src/db-im.ts:63`: seq column (now in CREATE TABLE)
+- `src/db-rooms.ts:67-69`: workspace_name column
+- `src/db.ts:206-210`: dimension_scores column
 
 ## Key Design Patterns
+1. **WAL mode** for concurrency
+2. **Soft deletes** (`active` flags)
+3. **Upsert patterns** (`ON CONFLICT DO UPDATE`)
+4. **JSON storage** for complex objects
+5. **Prepared statements** (IMDB)
+6. **Try-catch migrations** for new columns
 
-1. **WAL Mode**: All databases use `PRAGMA journal_mode = WAL` for better concurrency
-2. **Soft Deletes**: `rooms.active`, `broadcasts.active` flags instead of DELETE
-3. **Upsert Patterns**: `INSERT ON CONFLICT DO UPDATE` for idempotent operations
-4. **Migration**: Try-catch around `ALTER TABLE` adds new columns to existing DBs
-5. **Timestamps**: Use `datetime('now', 'localtime')` for local timezone timestamps
-6. **Foreign Keys**: Defined but not enforced (no `PRAGMA foreign_keys = ON`)
-7. **JSON Storage**: Complex objects stored as TEXT (e.g., `capabilities`, `dimension_scores`)
+## Database Files
+- `data/hub.db` → HubDB (`src/db.ts`)
+- `data/rooms.db` → RoomDB (`src/db-rooms.ts`)
+- `data/im.db` → IMDB (`src/db-im.ts`)
+- `data/tasks.db` → TaskDB (`src/db-tasks.ts`)
 
 ## Reference Files
-
-See `references/` directory for detailed table schemas including:
-- CREATE TABLE DDL
-- Column details (Name | Type | Nullable | Description)
-- Indexes and foreign keys
-- Source file locations
+See `references/` for detailed table schemas with DDL, columns, indexes, and usage patterns.

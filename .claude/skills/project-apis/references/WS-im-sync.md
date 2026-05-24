@@ -1,6 +1,6 @@
 # WS im.sync
 
-Request IM message synchronization since a given timestamp.
+Request IM message synchronization since a given timestamp. Validates membership before returning messages.
 
 ## Signature
 
@@ -17,24 +17,8 @@ Request IM message synchronization since a given timestamp.
   type: 'im.sync',
   data: {
     roomId: string,
-    messages: IMMessageRow[]   // Up to 200 messages
+    messages: object[]         // Encrypted message array
   }
-}
-
-// IMMessageRow structure
-{
-  id: string,
-  room_id: string,
-  sender: string,
-  content: string,
-  mentioned_agents: string | null,    // JSON string
-  quote_id: string | null,
-  type: string,
-  status: string | null,
-  attachments: string | null,         // JSON string
-  session_id: string | null,
-  timestamp: number,
-  created_at: string                  // ISO datetime
 }
 ```
 
@@ -47,14 +31,20 @@ Request IM message synchronization since a given timestamp.
 
 ## Business Flow
 
-1. **Validate**: Check `roomId` is present
-2. **Query**: Fetch messages from `im_messages` where `timestamp > afterTimestamp`
-3. **Limit**: Return max 200 messages, ordered by `timestamp ASC`
-4. **Respond**: Send message array to requesting client only (not broadcast)
+1. **Validate Membership**: Check in-memory `imRoomMembers` first
+2. **Fallback to DB**: If not in memory, query `im_rooms` table for membership
+3. **Re-register**: Add client to in-memory set if found in DB
+4. **Query Messages**: Fetch messages where `timestamp > afterTimestamp`
+5. **Encrypt**: Encrypt each message with PSK for transmission
+6. **Respond**: Send encrypted array to requesting client only
 
 ## Called Services
 
-- `IMDB.getMessagesAfter(roomId, afterTimestamp, 200)` - Query database
+- `WsHub.imRoomMembers` - In-memory membership check
+- `IMDB.getRoom()` - Fallback DB membership check
+- `IMDB.getMessagesAfter()` - Query message history
+- `WsHub.addImRoomMember()` - Re-register in-memory on DB fallback
+- `encryptIMMessage()` - Encrypt messages with PSK
 
 ## Source File
 
@@ -63,3 +53,9 @@ Request IM message synchronization since a given timestamp.
 ## Error Responses
 
 - `error` - Missing `roomId`
+- `error` - Not a member of this room (neither in-memory nor DB)
+
+## Side Effects
+
+- **Membership Repair**: Clients with valid DB membership but missing in-memory tracking are automatically re-registered
+- **No Broadcast**: Sync responses are unicast to requester only
