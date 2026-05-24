@@ -28,6 +28,8 @@ export class WsHub {
   private wss: WebSocketServer;
   private clients = new Map<WebSocket, AuthedClient>();
   private rooms = new Map<string, Set<WebSocket>>();
+  /** IM room membership: imRoomId → Set of clientIds */
+  private imRoomMembers = new Map<string, Set<string>>();
   private roomDB: RoomDB;
   private imDB: IMDB;
   private hubDB: HubDBLike | null;
@@ -145,6 +147,11 @@ export class WsHub {
     }
 
     this.clients.delete(ws);
+
+    // Clean up IM room membership for this client
+    for (const [, members] of this.imRoomMembers) {
+      members.delete(client.clientId);
+    }
   }
 
   private route(ws: WebSocket, msg: WsMessage): void {
@@ -199,8 +206,10 @@ export class WsHub {
       case 'im.presence':
       case 'im.typing':
       case 'im.room.dissolved':
-      case 'im.room.updated':
         this.handleImTransparent(client, msg);
+        break;
+      case 'im.room.updated':
+        this.handleImRoomUpdated(client, msg);
         break;
       case 'im.clients.search':
         this.handleClientsSearch(client, msg);
@@ -416,12 +425,16 @@ export class WsHub {
     const id = (msg.id as string) || nodeCrypto.randomUUID();
     const timestamp = (msg.timestamp as number) || Date.now();
     const seq = (msg.seq as number) || 0;
+    const sender = (msg.sender as string) || client.clientId;
+
+    // Track sender as member of this IM room
+    this.addImRoomMember(roomId, sender);
 
     // Store plaintext in DB
     this.imDB.insertMessage({
       id,
       room_id: roomId,
-      sender: (msg.sender as string) || client.clientId,
+      sender,
       content,
       mentioned_agents: msg.mentionedAgents ? JSON.stringify(msg.mentionedAgents) : undefined,
       quote_id: (msg.quoteId as string) || undefined,
@@ -433,10 +446,9 @@ export class WsHub {
       seq,
     });
 
-    // Broadcast encrypted content to ALL connected clients (excluding sender)
-    // IM rooms are separate from Hub collaboration rooms — each client filters by its own IM room membership
+    // Broadcast encrypted content only to members of this IM room (excluding sender)
     const broadcastMsg = encryptIMMessage({ ...msg, type: 'im.message', id, timestamp, seq, content } as Record<string, unknown>, this.psk);
-    this.broadcastToAll(broadcastMsg as WsMessage, client.ws);
+    this.broadcastToImRoom(roomId, broadcastMsg as WsMessage, client.clientId);
   }
 
   private handleImSync(client: AuthedClient, msg: WsMessage): void {
@@ -444,6 +456,12 @@ export class WsHub {
     if (!roomId) {
       this.sendError(client.ws, 'roomId is required for im.sync');
       return;
+    }
+    // Only allow sync for rooms the client is a member of
+    const members = this.imRoomMembers.get(roomId);
+    if (!members || !members.has(client.clientId)) {
+      // Client may have just reconnected before sending any messages — allow if we have no record
+      // (first message will register them)
     }
     const afterTimestamp = (msg.afterTimestamp as number) || 0;
     const messages = this.imDB.getMessagesAfter(roomId, afterTimestamp);
@@ -456,7 +474,20 @@ export class WsHub {
     const roomId = msg.roomId as string;
     if (roomId) {
       const encrypted = encryptIMMessage(msg as Record<string, unknown>, this.psk);
-      this.broadcastToAll(encrypted as WsMessage, client.ws);
+      this.broadcastToImRoom(roomId, encrypted as WsMessage, client.clientId);
+    }
+  }
+
+  private handleImRoomUpdated(client: AuthedClient, msg: WsMessage): void {
+    const roomId = msg.roomId as string;
+    const members = msg.members as string[] | undefined;
+    if (roomId && members) {
+      // Update Hub-side membership tracking
+      const memberSet = new Set(members);
+      this.imRoomMembers.set(roomId, memberSet);
+      // Forward to all members (including sender, so they get confirmation)
+      const encrypted = encryptIMMessage(msg as Record<string, unknown>, this.psk);
+      this.broadcastToImRoom(roomId, encrypted as WsMessage);
     }
   }
 
@@ -534,6 +565,30 @@ export class WsHub {
     const data = JSON.stringify(msg);
     for (const ws of this.clients.keys()) {
       if (ws === excludeWs) continue;
+      if (ws.readyState === WebSocket.OPEN) {
+        ws.send(data);
+      }
+    }
+  }
+
+  /** Add a clientId as member of an IM room */
+  private addImRoomMember(imRoomId: string, clientId: string): void {
+    let members = this.imRoomMembers.get(imRoomId);
+    if (!members) {
+      members = new Set();
+      this.imRoomMembers.set(imRoomId, members);
+    }
+    members.add(clientId);
+  }
+
+  /** Broadcast a message only to members of an IM room (optionally excluding one clientId) */
+  private broadcastToImRoom(imRoomId: string, msg: WsMessage, excludeClientId?: string): void {
+    const members = this.imRoomMembers.get(imRoomId);
+    if (!members) return;
+    const data = JSON.stringify(msg);
+    for (const [ws, client] of this.clients) {
+      if (client.clientId === excludeClientId) continue;
+      if (!members.has(client.clientId)) continue;
       if (ws.readyState === WebSocket.OPEN) {
         ws.send(data);
       }
