@@ -199,6 +199,7 @@ export class WsHub {
       case 'im.presence':
       case 'im.typing':
       case 'im.room.dissolved':
+      case 'im.room.updated':
         this.handleImTransparent(client, msg);
         break;
       case 'im.clients.search':
@@ -432,9 +433,10 @@ export class WsHub {
       seq,
     });
 
-    // Broadcast encrypted content to room
+    // Broadcast encrypted content to ALL connected clients (excluding sender)
+    // IM rooms are separate from Hub collaboration rooms — each client filters by its own IM room membership
     const broadcastMsg = encryptIMMessage({ ...msg, type: 'im.message', id, timestamp, seq, content } as Record<string, unknown>, this.psk);
-    this.broadcastToRoom(roomId, broadcastMsg as WsMessage);
+    this.broadcastToAll(broadcastMsg as WsMessage, client.ws);
   }
 
   private handleImSync(client: AuthedClient, msg: WsMessage): void {
@@ -450,11 +452,11 @@ export class WsHub {
     this.send(client.ws, { type: 'im.sync', data: { roomId, messages: encryptedMessages } });
   }
 
-  private handleImTransparent(_client: AuthedClient, msg: WsMessage): void {
+  private handleImTransparent(client: AuthedClient, msg: WsMessage): void {
     const roomId = msg.roomId as string;
     if (roomId) {
       const encrypted = encryptIMMessage(msg as Record<string, unknown>, this.psk);
-      this.broadcastToRoom(roomId, encrypted as WsMessage);
+      this.broadcastToAll(encrypted as WsMessage, client.ws);
     }
   }
 
@@ -521,6 +523,17 @@ export class WsHub {
     if (!roomSet) return;
     const data = JSON.stringify(msg);
     for (const ws of roomSet) {
+      if (ws.readyState === WebSocket.OPEN) {
+        ws.send(data);
+      }
+    }
+  }
+
+  /** Broadcast a message to all connected clients, optionally excluding one */
+  private broadcastToAll(msg: WsMessage, excludeWs?: WebSocket): void {
+    const data = JSON.stringify(msg);
+    for (const ws of this.clients.keys()) {
+      if (ws === excludeWs) continue;
       if (ws.readyState === WebSocket.OPEN) {
         ws.send(data);
       }
