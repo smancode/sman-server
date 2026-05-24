@@ -23,10 +23,14 @@ const AUTH_TIMEOUT_MS = 5000;
 const STALE_CHECK_INTERVAL_MS = 60_000;
 const STALE_THRESHOLD_MS = 90_000;
 const IM_CLEANUP_INTERVAL_MS = 60 * 60 * 1000; // 1 hour
+const PRESENCE_DEBOUNCE_MS = 150;
+const MAX_IM_CONCURRENCY = 20;
 
 export class WsHub {
   private wss: WebSocketServer;
   private clients = new Map<WebSocket, AuthedClient>();
+  /** Reverse index: clientId → WebSocket for O(1) lookup */
+  private clientIdToWs = new Map<string, WebSocket>();
   private rooms = new Map<string, Set<WebSocket>>();
   /** IM room membership: imRoomId → Set of clientIds */
   private imRoomMembers = new Map<string, Set<string>>();
@@ -38,6 +42,10 @@ export class WsHub {
   private imCleanupTimer: ReturnType<typeof setInterval> | null = null;
   private taskHandler: ReturnType<typeof createTaskHandler> | null = null;
   private taskEngine: TaskEngine | null = null;
+  /** Debounced presence broadcasts: roomId → timer */
+  private pendingPresenceBroadcasts = new Map<string, ReturnType<typeof setTimeout>>();
+  /** IM message processing concurrency counter */
+  private imActiveCount = 0;
 
   constructor(server: Server, roomDB: RoomDB, imDB: IMDB, hubDB: HubDBLike | null, psk: string, taskEngine?: TaskEngine) {
     this.roomDB = roomDB;
@@ -117,6 +125,7 @@ export class WsHub {
         subscribedRooms: new Set(),
       };
       this.clients.set(ws, client);
+      this.clientIdToWs.set(client.clientId, ws);
 
       this.send(ws, { type: 'auth.ok', clientId: client.clientId });
 
@@ -129,21 +138,58 @@ export class WsHub {
   }
 
   /**
-   * On auth, check Hub DB for rooms where this client is a member.
-   * Send im.room.invited for each so the client can sync locally.
+   * On auth, send room invites and batch presence broadcasts.
+   * Collects all rooms first, then sends one presence per room (not one per member scan).
    */
   private sendPendingImInvitations(client: AuthedClient): void {
     const rooms = this.imDB.getRoomsForMember(client.clientId);
+    if (rooms.length === 0) return;
+
+    const affectedRoomIds: string[] = [];
+
+    // Phase 1: rebuild in-memory membership + send invites to this client
     for (const room of rooms) {
       const members = JSON.parse(room.members) as string[];
-      const invitedMsg: WsMessage = { type: 'im.room.invited', roomId: room.id, members, name: room.name };
-      const encrypted = encryptIMMessage(invitedMsg as Record<string, unknown>, this.psk);
-      // Also rebuild in-memory membership
       this.imRoomMembers.set(room.id, new Set(members));
+      affectedRoomIds.push(room.id);
+
       if (client.ws.readyState === WebSocket.OPEN) {
+        const invitedMsg: WsMessage = { type: 'im.room.invited', roomId: room.id, members, name: room.name };
+        const encrypted = encryptIMMessage(invitedMsg as Record<string, unknown>, this.psk);
         client.ws.send(JSON.stringify(encrypted));
       }
     }
+
+    // Phase 2: batch presence — one broadcast per affected room
+    for (const roomId of affectedRoomIds) {
+      this.broadcastImPresence(roomId);
+    }
+  }
+
+  /** Collect all online clientIds for a room and broadcast im.presence */
+  private broadcastImPresence(roomId: string): void {
+    const members = this.imRoomMembers.get(roomId);
+    if (!members) return;
+    const onlineUsers: string[] = [];
+    for (const clientId of members) {
+      const ws = this.clientIdToWs.get(clientId);
+      if (ws && ws.readyState === WebSocket.OPEN) {
+        onlineUsers.push(clientId);
+      }
+    }
+    const payload: WsMessage = { type: 'im.presence', roomId, users: onlineUsers };
+    const encrypted = encryptIMMessage(payload as Record<string, unknown>, this.psk);
+    this.broadcastToImRoom(roomId, encrypted as WsMessage);
+  }
+
+  /** Debounced presence: batch rapid presence changes within PRESENCE_DEBOUNCE_MS */
+  private schedulePresenceBroadcast(roomId: string): void {
+    const existing = this.pendingPresenceBroadcasts.get(roomId);
+    if (existing) clearTimeout(existing);
+    this.pendingPresenceBroadcasts.set(roomId, setTimeout(() => {
+      this.pendingPresenceBroadcasts.delete(roomId);
+      this.broadcastImPresence(roomId);
+    }, PRESENCE_DEBOUNCE_MS));
   }
 
   private handleDisconnect(ws: WebSocket): void {
@@ -169,10 +215,19 @@ export class WsHub {
     }
 
     this.clients.delete(ws);
+    this.clientIdToWs.delete(client.clientId);
 
-    // Clean up IM room membership for this client
-    for (const [, members] of this.imRoomMembers) {
-      members.delete(client.clientId);
+    // Clean up IM room membership and broadcast presence to remaining members
+    const affectedRooms: string[] = [];
+    for (const [roomId, members] of this.imRoomMembers) {
+      if (members.has(client.clientId)) {
+        members.delete(client.clientId);
+        affectedRooms.push(roomId);
+      }
+    }
+    // Broadcast updated presence for each affected room (debounced)
+    for (const roomId of affectedRooms) {
+      this.schedulePresenceBroadcast(roomId);
     }
   }
 
@@ -217,12 +272,22 @@ export class WsHub {
         this.handleAgentList(client, msg);
         break;
 
-      // ---- IM handlers ----
+      // ---- IM handlers (with concurrency guard) ----
       case 'im.send':
-        this.handleImSend(client, msg);
+        if (this.imActiveCount >= MAX_IM_CONCURRENCY) {
+          this.sendError(client.ws, 'Server busy, try again');
+          break;
+        }
+        this.imActiveCount++;
+        try { this.handleImSend(client, msg); } finally { this.imActiveCount--; }
         break;
       case 'im.sync':
-        this.handleImSync(client, msg);
+        if (this.imActiveCount >= MAX_IM_CONCURRENCY) {
+          this.sendError(client.ws, 'Server busy, try again');
+          break;
+        }
+        this.imActiveCount++;
+        try { this.handleImSync(client, msg); } finally { this.imActiveCount--; }
         break;
       case 'im.agent_delta':
       case 'im.typing':
@@ -235,7 +300,12 @@ export class WsHub {
         this.handleImPresence(client, msg);
         break;
       case 'im.room.updated':
-        this.handleImRoomUpdated(client, msg);
+        if (this.imActiveCount >= MAX_IM_CONCURRENCY) {
+          this.sendError(client.ws, 'Server busy, try again');
+          break;
+        }
+        this.imActiveCount++;
+        try { this.handleImRoomUpdated(client, msg); } finally { this.imActiveCount--; }
         break;
       case 'im.clients.search':
         this.handleClientsSearch(client, msg);
@@ -523,22 +593,7 @@ export class WsHub {
   private handleImPresence(client: AuthedClient, msg: WsMessage): void {
     const roomId = msg.roomId as string;
     if (!roomId) return;
-
-    // Collect all online clientIds for this room from WS-connected clients
-    const members = this.imRoomMembers.get(roomId);
-    if (!members) return;
-
-    const onlineUsers: string[] = [];
-    for (const [, c] of this.clients) {
-      if (members.has(c.clientId)) {
-        onlineUsers.push(c.clientId);
-      }
-    }
-
-    // Broadcast aggregated presence to all room members (including sender)
-    const payload: WsMessage = { type: 'im.presence', roomId, users: onlineUsers, seq: msg.seq };
-    const encrypted = encryptIMMessage(payload as Record<string, unknown>, this.psk);
-    this.broadcastToImRoom(roomId, encrypted as WsMessage);
+    this.schedulePresenceBroadcast(roomId);
   }
 
   private handleImRoomUpdated(client: AuthedClient, msg: WsMessage): void {
@@ -573,9 +628,11 @@ export class WsHub {
       if (addedMembers.length > 0) {
         const invitedMsg: WsMessage = { type: 'im.room.invited', roomId, members };
         const invitedEncrypted = encryptIMMessage(invitedMsg as Record<string, unknown>, this.psk);
-        for (const [ws, c] of this.clients) {
-          if (addedMembers.includes(c.clientId) && ws.readyState === WebSocket.OPEN) {
-            ws.send(JSON.stringify(invitedEncrypted));
+        const data = JSON.stringify(invitedEncrypted);
+        for (const memberId of addedMembers) {
+          const ws = this.clientIdToWs.get(memberId);
+          if (ws && ws.readyState === WebSocket.OPEN) {
+            ws.send(data);
           }
         }
       }
@@ -646,7 +703,7 @@ export class WsHub {
     const data = JSON.stringify(msg);
     for (const ws of roomSet) {
       if (ws.readyState === WebSocket.OPEN) {
-        ws.send(data);
+        try { ws.send(data); } catch { /* skip disconnected */ }
       }
     }
   }
@@ -657,7 +714,7 @@ export class WsHub {
     for (const ws of this.clients.keys()) {
       if (ws === excludeWs) continue;
       if (ws.readyState === WebSocket.OPEN) {
-        ws.send(data);
+        try { ws.send(data); } catch { /* skip disconnected */ }
       }
     }
   }
@@ -677,11 +734,11 @@ export class WsHub {
     const members = this.imRoomMembers.get(imRoomId);
     if (!members) return;
     const data = JSON.stringify(msg);
-    for (const [ws, client] of this.clients) {
-      if (client.clientId === excludeClientId) continue;
-      if (!members.has(client.clientId)) continue;
-      if (ws.readyState === WebSocket.OPEN) {
-        ws.send(data);
+    for (const clientId of members) {
+      if (clientId === excludeClientId) continue;
+      const ws = this.clientIdToWs.get(clientId);
+      if (ws && ws.readyState === WebSocket.OPEN) {
+        try { ws.send(data); } catch { /* skip disconnected */ }
       }
     }
   }
@@ -699,7 +756,7 @@ export class WsHub {
 
   private send(ws: WebSocket, msg: WsMessage): void {
     if (ws.readyState === WebSocket.OPEN) {
-      ws.send(JSON.stringify(msg));
+      try { ws.send(JSON.stringify(msg)); } catch { /* skip disconnected */ }
     }
   }
 
@@ -732,6 +789,10 @@ export class WsHub {
       clearInterval(this.imCleanupTimer);
       this.imCleanupTimer = null;
     }
+    for (const timer of this.pendingPresenceBroadcasts.values()) {
+      clearTimeout(timer);
+    }
+    this.pendingPresenceBroadcasts.clear();
     this.wss.close();
   }
 }
