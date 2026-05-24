@@ -25,6 +25,7 @@ const STALE_THRESHOLD_MS = 90_000;
 const IM_CLEANUP_INTERVAL_MS = 60 * 60 * 1000; // 1 hour
 const PRESENCE_DEBOUNCE_MS = 150;
 const MAX_IM_CONCURRENCY = 20;
+const LOG = (...args: unknown[]) => console.log(`[HubWS]`, ...args);
 
 export class WsHub {
   private wss: WebSocketServer;
@@ -126,6 +127,7 @@ export class WsHub {
       };
       this.clients.set(ws, client);
       this.clientIdToWs.set(client.clientId, ws);
+      LOG(`Client authenticated: ${client.clientId} (total ${this.clients.size})`);
 
       this.send(ws, { type: 'auth.ok', clientId: client.clientId });
 
@@ -143,6 +145,9 @@ export class WsHub {
    */
   private sendPendingImInvitations(client: AuthedClient): void {
     const rooms = this.imDB.getRoomsForMember(client.clientId);
+    if (rooms.length > 0) {
+      LOG(`Sending ${rooms.length} pending IM room invitations to ${client.clientId}`);
+    }
     if (rooms.length === 0) return;
 
     const affectedRoomIds: string[] = [];
@@ -216,6 +221,7 @@ export class WsHub {
 
     this.clients.delete(ws);
     this.clientIdToWs.delete(client.clientId);
+    LOG(`Client disconnected: ${client.clientId} (remaining ${this.clients.size})`);
 
     // Clean up IM room membership and broadcast presence to remaining members
     const affectedRooms: string[] = [];
@@ -614,6 +620,8 @@ export class WsHub {
         addedMembers.push(...members);
       }
 
+      LOG(`im.room.updated: room=${roomId}, members=${members.length}, added=${addedMembers.length} (${addedMembers.join(',')}) by ${client.clientId}`);
+
       // Update Hub-side membership tracking (in-memory)
       this.imRoomMembers.set(roomId, newMemberSet);
 
@@ -624,15 +632,19 @@ export class WsHub {
       const encrypted = encryptIMMessage(msg as Record<string, unknown>, this.psk);
       this.broadcastToImRoom(roomId, encrypted as WsMessage);
 
-      // Send im.room.invited to newly added members so they can fetch room data
-      if (addedMembers.length > 0) {
+      // Send im.room.invited to newly added members (excluding sender) so they can fetch room data
+      const invitedMembers = addedMembers.filter(m => m !== client.clientId);
+      if (invitedMembers.length > 0) {
         const invitedMsg: WsMessage = { type: 'im.room.invited', roomId, members };
         const invitedEncrypted = encryptIMMessage(invitedMsg as Record<string, unknown>, this.psk);
         const data = JSON.stringify(invitedEncrypted);
-        for (const memberId of addedMembers) {
+        for (const memberId of invitedMembers) {
           const ws = this.clientIdToWs.get(memberId);
           if (ws && ws.readyState === WebSocket.OPEN) {
+            LOG(`Sending im.room.invited to ${memberId} for room ${roomId}`);
             ws.send(data);
+          } else {
+            LOG(`im.room.invited: ${memberId} not online (ws=${ws ? 'readyState=' + ws.readyState : 'null'}), will invite on reconnect`);
           }
         }
       }
