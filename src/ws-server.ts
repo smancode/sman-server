@@ -571,17 +571,23 @@ export class WsHub {
       quote_id: (msg.quoteId as string) || undefined,
       type,
       status,
-      attachments: decrypted.attachments ? JSON.stringify(decrypted.attachments) : undefined,
+      attachments: typeof decrypted.attachments === 'string'
+        ? decrypted.attachments
+        : (decrypted.attachments ? JSON.stringify(decrypted.attachments) : undefined),
       session_id: sessionId,
       timestamp,
       seq,
     });
 
     // Broadcast full message to members (excluding sender)
+    const attachments = decrypted.attachments
+      ? (typeof decrypted.attachments === 'string' ? JSON.parse(decrypted.attachments as string) : decrypted.attachments)
+      : undefined;
     const fullMsg: Record<string, unknown> = {
       type: 'im.message', id, roomId, sender, content,
       msgType: type, timestamp, seq, mentionedAgents: msg.mentionedAgents,
       quoteId: (msg.quoteId as string) || undefined, status, sessionId,
+      attachments: attachments ? JSON.stringify(attachments) : undefined,
     };
     // Remove undefined fields
     for (const key of Object.keys(fullMsg)) {
