@@ -307,6 +307,9 @@ export class WsHub {
         break;
       case 'im.agent_delta':
       case 'im.typing':
+      case 'im.file.request':
+      case 'im.file.response':
+      case 'im.file.ack':
         this.handleImTransparent(client, msg);
         break;
       case 'im.room.dissolved':
