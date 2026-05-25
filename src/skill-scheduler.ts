@@ -30,7 +30,7 @@ export class SkillScheduler {
   private db: HubDB;
   private timer: ReturnType<typeof setInterval> | null = null;
   private lastRunDate: string | null = null;
-  private enabled = true;
+  private enabled = false;
   private logs: DispatchLog[] = [];
   private maxLogs = 500;
   private scheduleHour: number;
