@@ -305,6 +305,14 @@ export class WsHub {
         this.imActiveCount++;
         try { this.handleImSync(client, msg); } finally { this.imActiveCount--; }
         break;
+      case 'im.sync.batch':
+        if (this.imActiveCount >= MAX_IM_CONCURRENCY) {
+          this.sendError(client.ws, 'Server busy, try again');
+          break;
+        }
+        this.imActiveCount++;
+        try { this.handleImSyncBatch(client, msg); } finally { this.imActiveCount--; }
+        break;
       case 'im.agent_delta':
       case 'im.typing':
       case 'im.file.request':
@@ -634,6 +642,35 @@ export class WsHub {
     // Encrypt message content for transmission
     const encryptedMessages = messages.map(m => encryptIMMessage(m as unknown as Record<string, unknown>, this.psk));
     this.send(client.ws, { type: 'im.sync', data: { roomId, messages: encryptedMessages } });
+  }
+
+  /** Batch sync: accepts an array of { roomId, afterTimestamp }, returns results for all rooms */
+  private handleImSyncBatch(client: AuthedClient, msg: WsMessage): void {
+    const items = msg.items as Array<{ roomId: string; afterTimestamp?: number }> | undefined;
+    if (!Array.isArray(items) || items.length === 0) {
+      this.sendError(client.ws, 'items array is required for im.sync.batch');
+      return;
+    }
+    const results: Array<{ roomId: string; messages: unknown[] }> = [];
+    for (const item of items) {
+      const roomId = item.roomId;
+      if (!roomId) continue;
+      // Verify membership
+      const members = this.imRoomMembers.get(roomId);
+      const isMemberInMemory = members?.has(client.clientId);
+      if (!isMemberInMemory) {
+        const dbRoom = this.imDB.getRoom(roomId);
+        const dbMembers: string[] = dbRoom ? JSON.parse(dbRoom.members) : [];
+        if (!dbMembers.includes(client.clientId)) continue;
+        this.addImRoomMember(roomId, client.clientId);
+      }
+      const afterTimestamp = item.afterTimestamp || 0;
+      const messages = this.imDB.getMessagesAfter(roomId, afterTimestamp);
+      const encryptedMessages = messages.map(m => encryptIMMessage(m as unknown as Record<string, unknown>, this.psk));
+      results.push({ roomId, messages: encryptedMessages });
+    }
+    LOG(`im.sync.batch: from=${client.clientId}, rooms=${items.length}, results=${results.length}`);
+    this.send(client.ws, { type: 'im.sync.batch', data: { results } });
   }
 
   private handleImTransparent(client: AuthedClient, msg: WsMessage): void {
