@@ -1,7 +1,8 @@
 ---
 name: skill-auto-updater
+version: 3
 description: |
-  每2小时自动检查并更新项目 skills。包括首次全量扫描、增量更新和团队知识辩证聚合。
+  每天 5:00、13:00、23:00 自动检查并更新项目 skills。包括首次全量扫描、增量更新和团队知识辩证聚合。
   默认关闭，需要在 Sman 设置中启用。
 ---
 
@@ -79,13 +80,29 @@ git log --after="2026-05-11" --oneline -- . ':!.claude' ':!.sman' | head -5
 
 ### 0.2 增量更新的变更检测
 
-**有 git 的项目**：检查 `_scanned.commitHash` 是否与 `git rev-parse HEAD` 一致：
-- 一致 → 无代码变更 → 跳过扫描（除非 `.sman/knowledge/` 有新的团队知识需要聚合）
-- 不一致 → 有代码变更 → 继续执行
+**⚠️ 核心原则：没有实际代码改动就不更新任何 md 文件，避免产生无用的 git 操作记录。**
 
-**无 git 的项目**：检查 `_scanned.scannedAt` 时间：
-- 距今 < 24 小时 → 跳过（避免频繁扫描）
-- 距今 ≥ 24 小时 → 继续执行
+**有 git 的项目**：
+
+1. 读取所有 skill 的 `_scanned.commitHash`，取最晚的一个作为上次扫描基线
+2. 对比 `git rev-parse HEAD`：
+   - **一致（无新 commit）**：
+     - 再检查 `.sman/knowledge/` 是否有新内容（文件修改时间晚于上次扫描）
+     - knowledge 也没变化 → **完全跳过，不更新任何 md，不执行任何 git 操作**
+     - knowledge 有新内容 → 只执行步骤三（knowledge 聚合），不重新扫描代码
+   - **不一致（有新 commit）**：
+     - 执行完整增量扫描流程（步骤一~四）
+     - 如果扫描后评估发现**不需要修改任何 skill 内容** → **直接跳过，不做任何文件修改，不做 git 操作**（避免产生无用的 git 操作记录）
+     - 如果扫描后确实需要修改 → 正常更新 md 文件，后置步骤 git commit & push
+
+**无 git 的项目**：
+
+1. 检查 `_scanned.scannedAt` 时间：
+   - 距今 < 24 小时 → 跳过
+   - 距今 ≥ 24 小时 → 继续步骤 2
+2. 检查项目源码文件和 `.sman/knowledge/` 文件的修改时间：
+   - 所有源码文件修改时间都早于 `_scanned.scannedAt`，且 knowledge 无新内容 → **只更新检查时间（`_scanned.scannedAt`），不修改任何 md 内容**
+   - 有源码文件更新或 knowledge 有新内容 → 正常执行
 
 ### 0.3 断点续扫（首次全量扫描中断后恢复）
 
@@ -100,53 +117,188 @@ git log --after="2026-05-11" --oneline -- . ':!.claude' ':!.sman' | head -5
 - 扫描中断 → 保留 `scan-plan.json`，下次自动续扫
 - `scan-plan.json` 超过 7 天未完成 → 删除并重新开始（避免永久残留）
 
+## 前置步骤：语言探测
+
+**在所有其他前置步骤之前执行。** 确定扫描输出的语言。
+
+1. **读取本地语言配置**：
+
+```bash
+# 读取 Sman 用户配置中的 language 字段
+SMAN_HOME="${SMANBASE_HOME:-$HOME/.sman}"
+LANGUAGE=$(node -e "try{const c=JSON.parse(require('fs').readFileSync('$SMAN_HOME/config.json','utf8'));console.log(c.language||'zh-CN')}catch{console.log('zh-CN')}" 2>/dev/null || echo "zh-CN")
+```
+
+2. **语言映射**：
+
+| config.json language | 输出语言 | 说明 |
+|---------------------|---------|------|
+| `zh-CN` / `zh-TW` / 任何 `zh` 开头 | 跟随中文 | 所有 skill 内容用中文 |
+| `en-US` / `en` / 任何 `en` 开头 | 跟随英文 | All skill content in English |
+| 其他或缺失 | 中文（默认） | 默认中文 |
+
+3. **写入 scan-plan.json**：将 `outputLanguage` 字段加入 Phase 0 的 scan-plan.json（见 Phase 0 第 7 步）
+
+4. **传递给子 agent**：每个子 agent 的 Task 描述中必须包含 `输出语言：{探测到的语言}`，子 agent 必须用该语言输出所有 SKILL.md 和 references/ 内容
+
+**原则**：
+- 技术术语保留英文（如 React、Spring Boot、API、WebSocket），不强行翻译
+- 代码示例、文件路径、命令保持原样
+- 表格标题、描述文字、注释跟随输出语言
+
+## 前置步骤：Skill 自更新
+
+**在语言探测之后执行。** 检查模板版本并更新自身。
+
+### 版本比较逻辑
+
+```
+读取本文件 frontmatter 中的 version 字段 → 项目版本
+读取 server/init/templates/skill-auto-updater/SKILL.md 的 version 字段 → 模板版本
+
+项目版本 < 模板版本 → 用模板文件覆盖项目文件（包括 references/），输出更新日志
+项目版本 >= 模板版本 → 跳过，继续后续步骤
+项目文件无 version 字段 → 视为 version 0，需要更新
+模板文件不存在 → 跳过（非 Sman 项目或开发环境）
+```
+
+**操作步骤**：
+
+1. 读取 `{project}/.claude/skills/skill-auto-updater/SKILL.md` 的 `version`（如无则视为 0）
+2. 读取 `{project}/server/init/templates/skill-auto-updater/SKILL.md` 的 `version`（如不存在则跳过）
+3. 如果模板版本更高：
+   ```bash
+   # 覆盖 SKILL.md
+   cp server/init/templates/skill-auto-updater/SKILL.md .claude/skills/skill-auto-updater/SKILL.md
+   # 覆盖其他模板文件（如 crontab.md 等）
+   cp server/init/templates/skill-auto-updater/*.md .claude/skills/skill-auto-updater/
+   ```
+4. 输出：`🔄 skill-auto-updater 已从 v{old} 更新到 v{new}`
+
+**原则**：
+- 只更新 `skill-auto-updater` 自身，不影响其他 skill
+- 模板文件不存在时静默跳过（非 Sman 开发环境）
+- 更新后**继续执行后续步骤**（不自中断），因为新版本可能引入了新的前置逻辑
+- 如果项目文件的 frontmatter 中有用户自定义字段（非 version/name/description），更新时保留这些字段
+
 ## 前置步骤：Git 同步
 
 执行任何扫描之前，先尝试同步 git 仓库。**只在项目有 git 时执行，无 git 则跳过。**
+
+**关键约束：绝对不能影响用户工作区的非 .claude/.sman 文件。**
 
 ```bash
 # 1. 检查是否有 git
 git rev-parse --is-inside-work-tree 2>/dev/null || echo "NOT_GIT"
 
-# 2. 如果有 git，拉取最新代码（只 stash 非 .claude/.sman 的文件，避免冲突）
-git stash push --include-untracked -m "skill-auto-updater auto stash" -- . ':!.claude' ':!.sman'
+# 2. 如果有 git，拉取最新代码
+# 先完整 stash 用户的所有改动（包括 untracked）
+git stash push --include-untracked -m "skill-auto-updater auto stash"
+# 拉取最新代码
 git pull --rebase || true  # pull 失败不影响后续执行
+# 恢复用户改动
 git stash pop 2>/dev/null || true  # stash pop 冲突也不影响，用当前状态扫描
 ```
 
 **原则**：
-- stash 时**排除 `.claude/` 和 `.sman/`**，避免用户的 skill 编辑和扫描结果互相覆盖
 - git 操作失败**不阻塞**扫描执行。pull 失败就用本地代码扫描，下次再同步
 - 不强制 push，只在扫描完成后的"后置步骤"中尝试
+- **绝不修改、暂存或提交 .claude/ .sman 以外的任何文件**
+
+## 前置步骤：.gitignore 维护
+
+**只在项目有 git 时执行。** 确保 `.sman/paths/` 下的运行产物不被提交到 git。
+
+```bash
+# 1. 检查是否有 git（如果前面已检测过可跳过）
+git rev-parse --is-inside-work-tree 2>/dev/null || echo "NOT_GIT"
+
+# 2. 检查 .gitignore 是否存在
+test -f .gitignore || echo "NO_GITIGNORE"
+
+# 3. 检查以下条目是否已在 .gitignore 中
+# .sman/paths/*/runs/
+# .sman/paths/*/reports/
+# .sman/paths/*/tmp/
+```
+
+**操作逻辑**：
+
+1. 有 git 且 `.gitignore` 存在 → 检查三个条目是否都存在，缺失则追加
+2. 有 git但 `.gitignore` 不存在 → 创建 `.gitignore` 并写入三个条目
+3. 无 git → 跳过
+
+**追加时格式**（追加到文件末尾，前面加一个空行和注释）：
+
+```
+# Sman path artifacts
+.sman/paths/*/runs/
+.sman/paths/*/reports/
+.sman/paths/*/tmp/
+```
+
+**原则**：
+- 只检查和追加，不修改 `.gitignore` 中的其他内容
+- 如果三个条目都已存在，不做任何操作
+- 不创建 `.gitignore` 以外的文件
 
 ## 后置步骤：Git 提交与推送
 
 扫描完成并写入所有 skill 文件后，尝试将变更提交到 git。**只在项目有 git 时执行。**
 
+**⚠️ 最重要：**
+1. **只允许操作 .claude/ 和 .sman/ 目录，绝对不能提交或推送其他文件**
+2. **没有实际 md 内容变更就不 commit & push，避免产生无用的 git 操作记录**
+3. **只有评估后确实修改了 skill md 内容（不是只改了 commitHash）才执行 git commit**
+
 ```bash
 # 1. 检查 .claude/ 和 .sman/ 下是否有变更
 git diff --name-only -- .claude/ .sman/
-# 无变更 → 跳过
+# 无变更 → 跳过整个后置步骤，输出 "⏭️ 无 skill 文件变更，跳过提交"
 
-# 2. 有变更 → 尝试推送（先 push 测试权限，再 commit）
+# 2. 检查变更是否只是 commitHash/scannedAt 的更新（不是实际内容变更）
+# 排除只改了 frontmatter 中 _scanned 字段的文件
+git diff --name-only -- .claude/ .sman/ | while read f; do
+  # 检查每个变更文件：是否只有 _scanned 相关行变了
+  CHANGED_LINES=$(git diff "$f" | grep '^[+-]' | grep -v '^[+-][+-][+-]' | grep -v '_scanned' | grep -v 'scannedAt' | grep -v 'commitHash')
+  if [ -n "$CHANGED_LINES" ]; then
+    echo "$f"
+  fi
+done
+# 如果上面的循环无输出 → 变更只是 commitHash/scannedAt → 跳过提交
+#   输出: "⏭️ 无实际 skill 内容变更（仅 commitHash/scannedAt 更新），跳过提交"
+
+# 3. 有实际内容变更 → 尝试推送（先 push 测试权限，再 commit）
 git push --dry-run 2>&1
 # push --dry-run 失败（无权限/保护分支/网络不通）→ 放弃提交，回退
 #   → git checkout -- .claude/ .sman/
 #   → 输出: ⏭️ 无 push 权限或分支受保护，放弃提交
 # push --dry-run 成功 → 继续
 
-# 3. 正式提交并推送
-git add .claude/ .sman/
+# 4. 暂存（严格限定范围，包含本 skill 可能维护的 .gitignore）
+git add .claude/ .sman/ .gitignore
+
+# 5. 安全校验：确认暂存区只有允许的文件
+STAGED=$(git diff --cached --name-only)
+echo "$STAGED" | grep -v '^\.claude/' | grep -v '^\.sman/' | grep -v '^\.gitignore$' && {
+  echo "❌ 暂存区包含非 .claude/.sman/.gitignore 文件，放弃提交"
+  git reset HEAD
+  exit 0
+}
+
+# 6. 确认无误后提交并推送
 git commit -m "chore(skill): auto-update project skills [skip ci]"
 git push
 ```
 
 **原则**：
-- 只提交 `.claude/` 和 `.sman/` 目录，不碰其他文件
+- **只提交 `.claude/` 和 `.sman/` 目录**（.gitignore 的维护追加除外），不碰其他文件
+- **第 4 步的暂存区校验是强制步骤，不可跳过**。如果校验失败必须 `git reset HEAD` 并放弃提交
 - `[skip ci]` 避免触发 CI 流水线
 - **先 `push --dry-run` 测试权限**，无权限则不 commit，直接回退工作区变更
 - 管控分支（master/main 受保护）直接放弃，不留脏状态
 - **绝不 force push**
+- **禁止使用 `git add -A`、`git add .`、`git add --all` 等无范围限制的暂存命令**
 
 ---
 
@@ -189,6 +341,7 @@ find . -type f \( -name "*.ts" -o -name "*.tsx" -o -name "*.js" -o -name "*.jsx"
   "techStack": ["TypeScript", "React"],
   "architecture": "三层/MVC",
   "hasDatabase": true,
+  "outputLanguage": "中文",
   "phases": ["knowledge", "database", "project", "rules"],
   "startedAt": "2026-01-01T00:00:00Z",
   "completedPhases": []
@@ -345,7 +498,7 @@ find . -type f \( -name "*.ts" -o -name "*.tsx" -o -name "*.js" -o -name "*.jsx"
 
 每个子 agent 必须遵循以下规范：
 
-1. **Task 描述**：明确目标 skill、扫描范围、降级规则（如适用）、输出文件路径
+1. **Task 描述**：明确目标 skill、扫描范围、降级规则（如适用）、输出文件路径、**输出语言**（从 scan-plan.json 的 `outputLanguage` 读取，子 agent 必须用该语言输出所有内容）
 2. **独立上下文**：子 agent 不继承主 agent 的对话历史，通过文件传递信息
    - 输入：读取 `.sman/scan-plan.json`、`project-structure/references/`（如已有）
    - 输出：写入对应的 `.claude/skills/{skill-name}/SKILL.md` 和 `references/`
@@ -403,6 +556,8 @@ find . -type f \( -name "*.ts" -o -name "*.tsx" -o -name "*.js" -o -name "*.jsx"
 后续运行时只更新变更部分。
 
 **核心要求：增量更新绝不是简单罗列 git diff 改动点，必须分析关联影响。**
+
+**写入前比对规则（所有 skill 通用）**：每次写入 SKILL.md 或 references/ 之前，先读取已有文件，忽略 `_scanned` 字段（commitHash/scannedAt/branch）后与新生成内容比对。**内容无实质差异则不写入**，避免只改了时间戳却触发无用的 git commit。
 
 > 差的增量更新："新增了 UserService.java，包含 login 和 register 方法"
 > 好的增量更新："新增 UserService 替代了旧的 AuthService 登录逻辑，AuthController 仍引用 AuthService（已标记废弃），建议后续迁移。Session 表结构未变但 login 接口入参新增了 deviceId 字段"
@@ -494,6 +649,22 @@ find . -type f \( -name "*.ts" -o -name "*.tsx" -o -name "*.js" -o -name "*.jsx"
 
 生成的 knowledge skill 是开发者可以直接依赖的可靠知识库。
 
+#### 3.0 是否需要更新 knowledge
+
+**有 git 的项目**：
+- knowledge 源文件（`.sman/knowledge/*.md`）的 git hash 是否有变化（对比上次扫描时记录的 hash）
+- 无变化 → **完全跳过 knowledge 聚合**，不修改任何 md 文件，不做任何 git 操作
+- 有变化 → 执行辩证聚合
+  - 聚合后发现**不需要修改 knowledge skill 的 md 内容** → **直接跳过，不做任何文件修改和 git 操作**（避免无用的 git 操作记录）
+  - 聚合后确实需要修改 → 正常更新 md 文件
+
+**无 git 的项目**：
+- 检查 `.sman/knowledge/*.md` 文件修改时间是否晚于 `_scanned.scannedAt`
+- 全部早于扫描时间 → **跳过 knowledge 聚合**，但可以更新检查时间（`_scanned.scannedAt`）
+- 有新文件或更新的文件 → 执行辩证聚合
+  - 聚合后发现**不需要修改 knowledge skill 的 md 内容** → 只更新检查时间（`_scanned.scannedAt`），不修改 md
+  - 聚合后确实需要修改 → 正常更新 md 文件
+
 #### 3.1 扫描来源
 
 列出 `.sman/knowledge/` 下所有文件，按类别分组：
@@ -548,15 +719,31 @@ description: "{描述}。经代码验证，由 skill-auto-updater 聚合。"
 - 具体内容
 ```
 
-#### 3.5 源文件清理
+#### 3.5 写入前比对（防止无用 git 记录）
 
-**安全约束**：只在 skill 文件写入成功后才清理源文件。
+**⚠️ 这是防止无用 git commit 的关键步骤，不可跳过。**
+
+在将新生成的 knowledge skill 内容写入文件之前，必须先比对：
+
+1. 读取已有的 `.claude/skills/knowledge-{category}/SKILL.md`
+2. 将已有内容（忽略 `_scanned` frontmatter 中的 commitHash/scannedAt/branch）与新内容比对
+3. **内容完全一致（去掉 `_scanned` 字段后 diff 为空）** → **不写入，不修改文件，保留原样**
+4. **内容有差异** → 正常写入新文件（含更新后的 `_scanned` 字段）
+
+**原则**：
+- 只改了 commitHash/scannedAt/验证时间戳 但实际知识内容没变 → 不写入
+- 新增/删除/修改了知识点 → 正常写入
+- 已有文件不存在（首次生成）→ 正常写入
+
+#### 3.6 源文件清理
+
+**安全约束**：只在 skill 文件实际被写入后才清理源文件。
 
 对每个 `.sman/knowledge/{category}-{user}.md`，删除已被处理的 hash 条目。只保留尚未处理的新条目。
 
 如果清理后文件为空或只剩标题，保留文件但清空内容。
 
-#### 3.6 边界条件
+#### 3.7 边界条件
 
 - `.sman/knowledge/` 不存在或为空 → 跳过本阶段
 - 某类别无 md 文件 → 跳过该类别
@@ -627,7 +814,7 @@ _scanned:
 5. 用 Write 工具写文件，不要用 Bash/cat
 6. 写之前先用 Bash `mkdir -p` 创建目录
 7. Reference 文件 < 100 行，只写关键信息
-8. 输出语言：English（节省 token）
+8. 输出语言：跟随本地语言配置（前置步骤探测结果），默认中文。技术术语保留英文
 9. SKILL.md frontmatter 必须设置 `_scanned` 字段（commitHash、scannedAt、branch）
 10. **最多 2 个子 agent 并行**，超过容易导致 LLM 报错
 11. 每个子 agent 是独立上下文，不继承主 agent 对话历史
@@ -637,6 +824,10 @@ _scanned:
 
 - 如果 `.sman/INIT.md` 不存在，跳过 capability 更新，但仍然执行 project knowledge 扫描
 - 如果没有显著变化且 project skills 的 commit hash 未变，跳过本次执行
+- **没有代码改动就不更新任何 md 文件**：有 git 时 commitHash 一致则完全跳过；无 git 时文件修改时间无变化则只更新检查时间
+- **有新 commit 但评估后无需修改 skill 内容**：直接跳过，不做任何文件修改和 git 操作，避免产生无用记录
+- **knowledge 聚合同理**：有 git 时 knowledge 源文件 git hash 无变化则跳过；无 git 时文件修改时间无变化则跳过
+- **后置 git 操作同理**：只有实际产生了 md 内容变更才 commit & push，避免无用的 git 操作记录
 - 不要删除用户手动添加的 skills，只更新和补充
 - 首次扫描优先级：规范 > 技术横切面 > 业务链路 > 数据库
 - 项目规模评估在 Phase 0 完成，后续 phase 严格按评估结果执行
