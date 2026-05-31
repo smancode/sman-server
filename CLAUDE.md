@@ -4,12 +4,21 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Sman-server is a management hub for the Sman desktop application. It collects encrypted usage reports from remote clients, manages broadcast notifications, serves application updates, and provides a React admin dashboard. All client-to-server communication is encrypted with AES-256-GCM using a pre-shared key.
+Sman-server is a management hub for the Sman desktop application. It provides:
+
+1. **Encrypted reporting & telemetry** — Clients send AES-256-GCM encrypted usage reports via PSK
+2. **Broadcast notifications** — Push notifications to clients with read tracking
+3. **Application updates** — Upload/publish updates for Electron auto-updater
+4. **WebSocket Hub** — Real-time room collaboration, IM messaging, task coordination, agent management
+5. **mTLS authentication** — Certificate-based client auth with self-hosted CA (CSR signing, renewal, revocation)
+6. **Account & Ledger system** — Double-entry ledger with control flags, limits, circuit breaker
+7. **Skill auto-updater scheduler** — Pull-model skill update dispatch via report response
+8. **React admin dashboard** — i18n (zh-CN/en-US), dark/light theme, 12 tab modules
 
 ## Commands
 
 ```bash
-# Development (starts both API on :5882 and admin UI on :4000)
+# Development (starts API on :5882 and admin UI on :4000)
 bash dev.sh
 
 # Or run individually:
@@ -31,45 +40,94 @@ pnpm test:watch             # vitest in watch mode
 ## Environment Setup
 
 Copy `.env.example` to `.env`. Required variables:
-- `PSK` — 32-character pre-shared key for AES-256-GCM (server refuses to start if missing or wrong length)
+- `SMAN_PSK` — 32-character pre-shared key for AES-256-GCM (server refuses to start if missing or wrong length)
 - `ADMIN_TOKEN` — bearer token for admin API auth
 - `PORT` — server port (default: 5882)
-- `PSK_VERSION` — must be `1`
+- `TLS_ENABLED` — enable HTTPS + mTLS (default: true, set `false` to disable)
 
 Package manager is **pnpm** for both server and web.
 
 ## Architecture
 
-**Stack:** Express 5 + better-sqlite3 (WAL mode, no ORM, raw SQL) + React 19 + Vite. ESM throughout (`"type": "module"` in both package.json files). TypeScript imports use `.js` extensions.
+**Stack:** Express 5 + better-sqlite3 (WAL mode, no ORM, raw SQL) + ws (WebSocket) + React 19 + Zustand + Vite. ESM throughout (`"type": "module"` in both package.json files). TypeScript imports use `.js` extensions.
 
 ### Server (`src/`)
 
-- `index.ts` — Express app setup, env validation, route mounting, static file serving, SPA fallback (localhost-only in production)
-- `db.ts` — `HubDB` class wrapping all SQLite operations. Four tables: `clients` (upsert on report), `reports`, `broadcasts` (soft delete via `active` flag), `read_log` (many-to-many client↔broadcast)
-- `crypto.ts` — AES-256-GCM encrypt/decrypt. Wire format: base64(IV + ciphertext + authTag)
-- `types.ts` — Shared TypeScript interfaces
-- `routes/report.ts` — `POST /api/report` (encrypted client usage report, 5-min timestamp window for replay protection)
-- `routes/broadcast.ts` — `POST /api/broadcasts` (fetch new broadcasts) and `POST /api/ack` (mark broadcasts as read)
-- `routes/admin.ts` — All `/admin/*` routes (bearer token auth). CRUD for broadcasts, client listing, stats, file upload, publish endpoint for generating `latest.yml`
+Core modules:
 
-Route modules export factory functions: `createXRouter(db, psk)` — dependencies are injected, no global state.
+| File | Responsibility |
+|------|---------------|
+| `index.ts` | Express app setup, env validation, route mounting, HTTPS/mTLS server, static serving, SPA fallback |
+| `db.ts` | `HubDB` — clients, reports, broadcasts, read_log, settings, downloads, page views |
+| `db-rooms.ts` | `RoomDB` — rooms, members, agents (collaboration rooms) |
+| `db-tasks.ts` | `TaskDB` — tasks, task_events, evaluation_reports, task_assignments |
+| `db-im.ts` | `IMDB` — IM rooms, messages (auto-cleanup >7 days) |
+| `db-certs.ts` | `CertDB` — mTLS client certificates (active/revoked) |
+| `db-accounts.ts` | `AccountDB` — accounts, identities, transactions, limits, control configs |
+| `crypto.ts` | AES-256-GCM encrypt/decrypt. Wire format: base64(IV + ciphertext + authTag) |
+| `im-crypto.ts` | IM-specific message encrypt/decrypt |
+| `ca.ts` | Self-hosted CA: init, server cert generation, CSR signing, renewal, CRL |
+| `ws-server.ts` | `WsHub` — WebSocket hub: PSK + mTLS auth, rooms, agents, IM, presence, stale detection |
+| `ws-task-handler.ts` | WebSocket task message routing (evaluation, dispatch, progress, completion) |
+| `task-engine.ts` | `TaskEngine` — task lifecycle: create → evaluate → confirm → dispatch → run → complete/fail, auto-confirm & auto-dispatch |
+| `ledger-engine.ts` | `LedgerEngine` — double-entry transfer pipeline: circuit breaker → validate → idempotency → control flags → limits → balance → execute |
+| `account-engine.ts` | `AccountEngine` — account CRUD operations |
+| `skill-scheduler.ts` | `SkillScheduler` — pull-model skill update dispatch, ticks at scheduled time, queues commands in report response |
+| `control-engine.ts` | Control config evaluation for account operations |
+| `limit-engine.ts` | Rate/amount limit checking (time + counterparty dimensions) |
+| `control-flags.ts` | Account control flag parsing (debit/credit/frozen/config/limit) |
+| `circuit-breaker.ts` | Circuit breaker for ledger fault tolerance |
+| `reject-codes.ts` | Structured reject code definitions for transfer pipeline |
+| `types.ts` | Shared TypeScript interfaces (reports, broadcasts, rooms, agents, tasks, WS messages) |
+| `account-types.ts` | Account/transaction/limit/control TypeScript types |
+
+Route modules:
+
+| File | Routes | Auth |
+|------|--------|------|
+| `routes/report.ts` | `POST /api/report` | PSK encrypted |
+| `routes/broadcast.ts` | `POST /api/broadcasts`, `POST /api/ack` | PSK encrypted |
+| `routes/admin.ts` | `/admin/*` stats, clients, broadcasts CRUD, uploads, publish | Bearer token |
+| `routes/rooms.ts` | `/admin/rooms/*` room management | Bearer token |
+| `routes/tasks.ts` | `/admin/tasks/*` task management | Bearer token |
+| `routes/hub-api.ts` | `/api/hub/*` rooms, agents, tasks, evaluations, stardom/hub dev-mode | PSK encrypted |
+| `routes/auth.ts` | `/api/auth/*` cert enrollment (CSR), renewal, CA cert fetch | Public + mTLS |
+| `routes/accounts.ts` | `/api/accounts/*` balance, transfer, history | PSK encrypted |
+| `routes/admin-accounts.ts` | `/admin/accounts/*` account management, topup, freeze, limits | Bearer token |
+
+Route modules export factory functions: `createXRouter(deps)` — dependencies are injected, no global state.
 
 ### Admin Dashboard (`web/src/`)
 
-React SPA with no routing library (tab switching via state). No CSS framework (hand-written CSS with custom properties). Token auth stored in `localStorage` under `sman-admin-token`. Vite dev server on port 4000 proxies `/admin` to the API server.
+React SPA with no routing library (tab switching via state). No CSS framework (hand-written CSS with custom properties). **Zustand** for state management (auth, theme). **i18n** with zh-CN / en-US locales (JSON dicts). Token auth stored in `localStorage` under `sman-admin-token`. Vite dev server on port 4000 proxies `/admin` to the API server.
+
+Tab components: DashboardTab, ClientsTab, BroadcastsTab, UploadTab, RoomsTab, AgentsTab, TasksTab, ErrorsTab, FeedbacksTab, AnalyticsTab, SkillSchedulerTab, LeaderboardTab.
 
 ### Data Flow
 
-Clients send encrypted reports → server decrypts with PSK → upserts client record + inserts report row. Clients fetch broadcasts (encrypted response) and ack reads. Admin dashboard authenticates via bearer token and manages broadcasts/uploads through `/admin/*` endpoints.
+1. **Reports**: Clients send encrypted reports → server decrypts with PSK → upserts client record + inserts report row → returns pending skill scheduler commands
+2. **WebSocket**: Clients connect via WSS (mTLS auto-auth or PSK auth message) → join rooms → register agents → send/receive IM messages (encrypted) → coordinate tasks
+3. **Broadcasts**: Clients fetch encrypted broadcasts and ack reads
+4. **Accounts**: PSK-encrypted client routes for balance/transfer; bearer token admin routes for management
+5. **Updates**: Admin uploads files → publishes `latest.yml` → Electron auto-updater downloads from `/updates/sman/` or friendly URLs (`/download/windows-x64`, `/download/macos-arm`)
 
 ### Key Patterns
 
-- Client API uses encrypted envelopes: `{ payload, timestamp, pskVersion }` with replay protection
+- Client API uses encrypted envelopes: `{ payload, timestamp, pskVersion }` with 5-min replay protection
 - Client records use upsert (INSERT ON CONFLICT DO UPDATE)
 - Broadcasts use soft delete (`active` flag)
 - Admin routes all require `Authorization: Bearer <ADMIN_TOKEN>`
+- WebSocket supports both PSK auth and mTLS auto-authentication
+- IM messages use separate encrypt/decrypt (`im-crypto.ts`)
+- IM presence is debounced (150ms) to batch rapid changes
+- IM concurrency guard (max 20 concurrent message processing)
+- Task lifecycle: draft → evaluating → confirmed → dispatched → running → completed/failed (with auto-confirm & auto-dispatch)
+- Ledger uses circuit breaker + control flags + limit checks + double-entry bookkeeping
+- Skill scheduler uses pull model: queues commands → client fetches on next report heartbeat
 - Tests create a temp database in `os.tmpdir()` per test file
-- Update files (`.exe`, `.dmg`, `.yml`, `.blockmap`) served from `data/updates/sman/`
+- Update files served from `data/updates/sman/`, supports `_redirects/` for external URLs
+- Public static pages from `data/pages/` (no auth, LAN accessible)
+- Graceful shutdown: SIGTERM/SIGINT → stop scheduler → close WS → close DBs
 
 ## Packaging (Windows x64 deploy)
 
