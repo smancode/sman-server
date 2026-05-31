@@ -57,14 +57,20 @@ const ledgerEngine = new LedgerEngine(accountDB);
 const accountEngineInstance = new AccountEngine(accountDB);
 const taskEngine = new TaskEngine(taskDB);
 
-// Phase 0A: Initialize CA + generate server cert
+// Phase 0A: Initialize CA + generate server cert (skip when TLS disabled)
 const tlsDataDir = path.join(DATA_DIR, 'tls');
-const caResult = initCA(tlsDataDir);
-const serverCerts = generateServerCert(tlsDataDir);
-if (caResult.generated) {
-  console.log('[TLS] New CA certificate generated');
+let caResult: Awaited<ReturnType<typeof initCA>> | null = null;
+let serverCerts: Awaited<ReturnType<typeof generateServerCert>> | null = null;
+if (TLS_ENABLED) {
+  caResult = initCA(tlsDataDir);
+  serverCerts = generateServerCert(tlsDataDir);
+  if (caResult.generated) {
+    console.log('[TLS] New CA certificate generated');
+  }
+  console.log('[TLS] Server certificate ready');
+} else {
+  console.log('[TLS] Disabled — running in HTTP mode');
 }
-console.log('[TLS] Server certificate ready');
 
 // Skill auto-updater scheduler — pull model via report response
 const scheduleHour = parseInt(process.env.SKILL_SCHEDULE_HOUR || '3', 10);
@@ -192,9 +198,9 @@ app.use('/admin', createAdminCertRouter(certDB, ADMIN_TOKEN));
 let server: http.Server | https.Server;
 if (TLS_ENABLED) {
   server = https.createServer({
-    key: serverCerts.key,
-    cert: serverCerts.cert,
-    ca: caResult.caCertPem,
+    key: serverCerts!.key,
+    cert: serverCerts!.cert,
+    ca: caResult!.caCertPem,
     requestCert: true,
     rejectUnauthorized: false, // Allow non-mTLS clients (PSK legacy + cert enrollment)
   }, app);
