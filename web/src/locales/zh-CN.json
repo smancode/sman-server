@@ -28,8 +28,8 @@
   "dashboard.activeBroadcasts": { "text": "活跃广播" },
   "dashboard.loadFailed": { "text": "加载统计数据失败" },
 
+  "clients.username": { "text": "用户" },
   "clients.hostname": { "text": "主机名" },
-  "clients.ip": { "text": "IP 地址" },
   "clients.version": { "text": "版本" },
   "clients.sessions": { "text": "会话数" },
   "clients.lastSeen": { "text": "最后上线" },

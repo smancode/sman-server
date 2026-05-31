@@ -6,6 +6,7 @@ import type { ClientRecord, AdminStats } from './types.js';
 interface UpsertClientParams {
   clientId: string;
   version: string;
+  username: string;
   hostname: string;
   ip: string;
   activeSessions: number;
@@ -208,20 +209,28 @@ export class HubDB {
     } catch {
       // Column already exists
     }
+
+    // Migration: add username column to clients table
+    try {
+      this.db.exec("ALTER TABLE clients ADD COLUMN username TEXT");
+    } catch {
+      // Column already exists
+    }
   }
 
   upsertClient(params: UpsertClientParams): void {
     const now = new Date().toISOString();
     this.db.prepare(`
-      INSERT INTO clients (client_id, version, hostname, ip, first_seen, last_seen, active_sessions)
-      VALUES (?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO clients (client_id, version, username, hostname, ip, first_seen, last_seen, active_sessions)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(client_id) DO UPDATE SET
         version = excluded.version,
+        username = excluded.username,
         hostname = excluded.hostname,
         ip = excluded.ip,
         last_seen = excluded.last_seen,
         active_sessions = excluded.active_sessions
-    `).run(params.clientId, params.version, params.hostname, params.ip, now, now, params.activeSessions);
+    `).run(params.clientId, params.version, params.username, params.hostname, params.ip, now, now, params.activeSessions);
   }
 
   getClient(clientId: string): ClientRecord | undefined {

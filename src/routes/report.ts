@@ -40,6 +40,7 @@ export function createReportRouter(db: HubDB, psk: string, getSkillCommands?: (c
       db.upsertClient({
         clientId: data.clientId,
         version: data.version,
+        username: data.username || data.clientId.split('@')[0],
         hostname: data.hostname,
         ip: data.ip,
         activeSessions: data.activeSessions,

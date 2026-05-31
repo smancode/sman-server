@@ -27,8 +27,8 @@
   "dashboard.activeBroadcasts": { "text": "Active Broadcasts" },
   "dashboard.loadFailed": { "text": "Failed to load stats" },
 
+  "clients.username": { "text": "User" },
   "clients.hostname": { "text": "Hostname" },
-  "clients.ip": { "text": "IP" },
   "clients.version": { "text": "Version" },
   "clients.sessions": { "text": "Sessions" },
   "clients.lastSeen": { "text": "Last Seen" },

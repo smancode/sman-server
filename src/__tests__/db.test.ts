@@ -23,6 +23,7 @@ describe('HubDB', () => {
       db.upsertClient({
         clientId: 'host@1.2.3.4',
         version: '1.0.0',
+        username: 'host',
         hostname: 'host',
         ip: '1.2.3.4',
         activeSessions: 3,
@@ -34,8 +35,8 @@ describe('HubDB', () => {
     });
 
     it('should update existing client', () => {
-      db.upsertClient({ clientId: 'host@1.2.3.4', version: '1.0', hostname: 'host', ip: '1.2.3.4', activeSessions: 1 });
-      db.upsertClient({ clientId: 'host@1.2.3.4', version: '1.1', hostname: 'host', ip: '1.2.3.4', activeSessions: 5 });
+      db.upsertClient({ clientId: 'host@1.2.3.4', version: '1.0', username: 'host', hostname: 'host', ip: '1.2.3.4', activeSessions: 1 });
+      db.upsertClient({ clientId: 'host@1.2.3.4', version: '1.1', username: 'host', hostname: 'host', ip: '1.2.3.4', activeSessions: 5 });
       const client = db.getClient('host@1.2.3.4');
       expect(client!.version).toBe('1.1');
       expect(client!.active_sessions).toBe(5);
@@ -44,7 +45,7 @@ describe('HubDB', () => {
 
   describe('insertReport', () => {
     it('should insert and query reports', () => {
-      db.upsertClient({ clientId: 'host@1.2.3.4', version: '1.0', hostname: 'host', ip: '1.2.3.4', activeSessions: 0 });
+      db.upsertClient({ clientId: 'host@1.2.3.4', version: '1.0', username: 'host', hostname: 'host', ip: '1.2.3.4', activeSessions: 0 });
       db.insertReport({ clientId: 'host@1.2.3.4', reportTime: '2026-05-08T14:00:00Z', activeSessions: 3 });
       const reports = db.getReportsByClientId('host@1.2.3.4');
       expect(reports).toHaveLength(1);
@@ -75,7 +76,7 @@ describe('HubDB', () => {
 
   describe('readLog', () => {
     it('should mark broadcasts as read', () => {
-      db.upsertClient({ clientId: 'host@1.2.3.4', version: '1.0', hostname: 'host', ip: '1.2.3.4', activeSessions: 0 });
+      db.upsertClient({ clientId: 'host@1.2.3.4', version: '1.0', username: 'host', hostname: 'host', ip: '1.2.3.4', activeSessions: 0 });
       db.createBroadcast({ id: 'bc_001', title: 'T', body: 'B', createdAt: '2026-05-08T10:00:00Z' });
       db.markAsRead({ clientId: 'host@1.2.3.4', broadcastId: 'bc_001' });
       const readIds = db.getReadBroadcastIds('host@1.2.3.4');
@@ -85,8 +86,8 @@ describe('HubDB', () => {
 
   describe('stats', () => {
     it('should return admin stats', () => {
-      db.upsertClient({ clientId: 'a@1', version: '1.0', hostname: 'a', ip: '1', activeSessions: 2 });
-      db.upsertClient({ clientId: 'b@2', version: '1.0', hostname: 'b', ip: '2', activeSessions: 0 });
+      db.upsertClient({ clientId: 'a@1', version: '1.0', username: 'a', hostname: 'a', ip: '1', activeSessions: 2 });
+      db.upsertClient({ clientId: 'b@2', version: '1.0', username: 'b', hostname: 'b', ip: '2', activeSessions: 0 });
       const stats = db.getStats();
       expect(stats.totalClients).toBe(2);
     });

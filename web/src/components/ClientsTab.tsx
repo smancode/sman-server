@@ -31,8 +31,8 @@ export function ClientsTab() {
         <table className="data-table">
           <thead>
             <tr>
+              <th>{t('clients.username')}</th>
               <th>{t('clients.hostname')}</th>
-              <th>{t('clients.ip')}</th>
               <th>{t('clients.version')}</th>
               <th>{t('clients.sessions')}</th>
               <th>{t('clients.lastSeen')}</th>
@@ -43,8 +43,8 @@ export function ClientsTab() {
           <tbody>
             {clients.map(c => (
               <tr key={c.client_id}>
-                <td>{c.hostname}</td>
-                <td className="mono">{c.ip}</td>
+                <td className="mono">{c.username || c.client_id.split('@')[0]}</td>
+                <td className="mono">{c.hostname}</td>
                 <td>{c.version}</td>
                 <td>{c.active_sessions}</td>
                 <td>{formatDateTime(c.last_seen)}</td>

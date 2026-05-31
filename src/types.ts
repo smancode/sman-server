@@ -1,12 +1,14 @@
 /** Client -> Server: usage report payload */
 export interface ReportPayload {
-  /** Unique client identifier */
+  /** Unique client identifier (username@hostname) */
   clientId: string;
   /** App version */
   version: string;
-  /** Client hostname */
+  /** OS username (e.g. "nasakim") */
+  username: string;
+  /** Machine hostname (e.g. "nasakim-mini") */
   hostname: string;
-  /** Client IP address */
+  /** Client IP address (best effort, for display only) */
   ip: string;
   /** Number of active sessions */
   activeSessions: number;
@@ -71,6 +73,7 @@ export interface EncryptedRequest {
 export interface ClientRecord {
   client_id: string;
   version: string;
+  username: string;
   hostname: string;
   ip: string;
   first_seen: string;

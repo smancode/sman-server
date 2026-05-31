@@ -8,6 +8,7 @@ export interface AdminStats {
 export interface ClientRecord {
   client_id: string;
   version: string;
+  username: string;
   hostname: string;
   ip: string;
   first_seen: string;
