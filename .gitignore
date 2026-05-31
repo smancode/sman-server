@@ -9,3 +9,4 @@ deploy-private/
 .sman/paths/*/reports/
 .sman/paths/*/tmp/
 .sman/knowledge/
+.trae/

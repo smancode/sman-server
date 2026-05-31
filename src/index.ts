@@ -1,6 +1,8 @@
 import 'dotenv/config';
 import express from 'express';
 import type { Request, Response, NextFunction } from 'express';
+import https from 'node:https';
+import http from 'node:http';
 import path from 'node:path';
 import fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
@@ -11,18 +13,27 @@ import { IMDB } from './db-im.js';
 import { TaskEngine } from './task-engine.js';
 import { WsHub } from './ws-server.js';
 import { loadPsk } from './crypto.js';
+import { initCA, generateServerCert, verifyClientCert } from './ca.js';
+import { CertDB } from './db-certs.js';
+import { AccountDB } from './db-accounts.js';
+import { LedgerEngine } from './ledger-engine.js';
+import { AccountEngine } from './account-engine.js';
 import { createReportRouter } from './routes/report.js';
 import { createBroadcastRouter } from './routes/broadcast.js';
 import { createAdminRouter } from './routes/admin.js';
 import { createRoomsRouter } from './routes/rooms.js';
 import { createTasksRouter } from './routes/tasks.js';
 import { createHubApiRouter } from './routes/hub-api.js';
+import { createAuthRouter, createAdminCertRouter } from './routes/auth.js';
+import { createAccountRouter } from './routes/accounts.js';
+import { createAdminAccountRouter } from './routes/admin-accounts.js';
 import { SkillScheduler } from './skill-scheduler.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PORT = parseInt(process.env.PORT || '5882', 10);
 const ADMIN_TOKEN = process.env.ADMIN_TOKEN;
-const DATA_DIR = path.resolve(process.cwd(), 'data');
+const DATA_DIR = path.resolve(process.env.HUB_DATA_DIR || path.join(process.cwd(), 'data'));
+const TLS_ENABLED = process.env.TLS_ENABLED !== 'false'; // Default: TLS on
 
 const PSK = loadPsk();
 
@@ -40,7 +51,20 @@ const db = new HubDB(path.join(DATA_DIR, 'hub.db'));
 const roomDB = new RoomDB(path.join(DATA_DIR, 'rooms.db'));
 const taskDB = new TaskDB(path.join(DATA_DIR, 'tasks.db'));
 const imDB = new IMDB(path.join(DATA_DIR, 'im.db'));
+const certDB = new CertDB(path.join(DATA_DIR, 'certs.db'));
+const accountDB = new AccountDB(path.join(DATA_DIR, 'accounts.db'));
+const ledgerEngine = new LedgerEngine(accountDB);
+const accountEngineInstance = new AccountEngine(accountDB);
 const taskEngine = new TaskEngine(taskDB);
+
+// Phase 0A: Initialize CA + generate server cert
+const tlsDataDir = path.join(DATA_DIR, 'tls');
+const caResult = initCA(tlsDataDir);
+const serverCerts = generateServerCert(tlsDataDir);
+if (caResult.generated) {
+  console.log('[TLS] New CA certificate generated');
+}
+console.log('[TLS] Server certificate ready');
 
 // Skill auto-updater scheduler — pull model via report response
 const scheduleHour = parseInt(process.env.SKILL_SCHEDULE_HOUR || '3', 10);
@@ -139,6 +163,10 @@ app.use('/updates', (_req, res) => res.status(404).send('Not found'));
 
 app.use('/api', createReportRouter(db, PSK, (clientId) => skillScheduler.getCommands(clientId)));
 app.use('/api', createBroadcastRouter(db, PSK));
+
+// mTLS auth routes (no client cert required — whitelisted for cert enrollment)
+app.use('/api/auth', createAuthRouter(certDB, ADMIN_TOKEN));
+
 app.route('/health').get((_req, res) => res.json({ ok: true })).head((_req, res) => res.status(200).end());
 app.route('/api/health').get((_req, res) => res.json({ ok: true })).head((_req, res) => res.status(200).end());
 
@@ -154,22 +182,43 @@ app.post('/api/pageview', (req, res) => {
 app.use('/admin', createAdminRouter(db, ADMIN_TOKEN, updatesDir));
 app.use('/admin', createRoomsRouter(roomDB, ADMIN_TOKEN));
 app.use('/admin', createTasksRouter(taskDB, ADMIN_TOKEN));
+app.use('/admin', createAdminCertRouter(certDB, ADMIN_TOKEN));
 
 // Hub API needs wsHub for auto-dispatch broadcast, but wsHub requires a running server.
 // Solution: register hub API route after listen(), but BEFORE the SPA fallback.
 // The SPA fallback is stored and registered after wsHub is created.
 
-const server = app.listen(PORT, () => {
-  console.log(`sman-server listening on port ${PORT}`);
+// Create HTTP or HTTPS server based on TLS_ENABLED
+let server: http.Server | https.Server;
+if (TLS_ENABLED) {
+  server = https.createServer({
+    key: serverCerts.key,
+    cert: serverCerts.cert,
+    ca: caResult.caCertPem,
+    requestCert: true,
+    rejectUnauthorized: false, // Allow non-mTLS clients (PSK legacy + cert enrollment)
+  }, app);
+  console.log('[TLS] HTTPS server with mTLS enabled');
+} else {
+  server = http.createServer(app);
+  console.log('[TLS] HTTP server (TLS disabled)');
+}
+
+server.listen(PORT, () => {
+  const protocol = TLS_ENABLED ? 'HTTPS' : 'HTTP';
+  console.log(`sman-server listening on port ${PORT} (${protocol})`);
   console.log(`Updates served at /updates/sman`);
-  // Start scheduler after server is ready
   skillScheduler.start();
 });
 
-const wsHub = new WsHub(server, roomDB, imDB, db, PSK, taskEngine);
+const wsHub = new WsHub(server, roomDB, imDB, db, PSK, taskEngine, certDB);
 
 // Hub API routes — registered after wsHub creation, before SPA fallback
 app.use('/api/hub', createHubApiRouter(roomDB, taskDB, PSK, taskEngine, db, wsHub));
+
+// Account system routes (PSK-encrypted client routes + admin routes)
+app.use('/api', createAccountRouter(accountDB, ledgerEngine, PSK));
+app.use('/admin', createAdminAccountRouter(accountDB, ledgerEngine, accountEngineInstance, ADMIN_TOKEN!));
 
 // Admin: manual trigger for skill scheduler
 app.post('/admin/skill-scheduler/trigger', (req: Request, res: Response) => {
@@ -251,6 +300,8 @@ process.on('SIGTERM', () => {
     taskDB.close();
     roomDB.close();
     imDB.close();
+    certDB.close();
+    accountDB.close();
     db.close();
     process.exit(0);
   });
@@ -263,6 +314,8 @@ process.on('SIGINT', () => {
     taskDB.close();
     roomDB.close();
     imDB.close();
+    certDB.close();
+    accountDB.close();
     db.close();
     process.exit(0);
   });

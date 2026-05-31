@@ -1,5 +1,6 @@
 import { WebSocketServer, WebSocket } from 'ws';
 import type { Server } from 'node:http';
+import type { Server as TlsServer } from 'node:https';
 import nodeCrypto from 'node:crypto';
 import { decrypt, encrypt } from './crypto.js';
 import { decryptIMMessage, encryptIMMessage } from './im-crypto.js';
@@ -8,6 +9,8 @@ import { IMDB } from './db-im.js';
 import type { WsMessage, WsAuthMessage, TaskStatus } from './types.js';
 import type { TaskEngine } from './task-engine.js';
 import { createTaskHandler } from './ws-task-handler.js';
+import { verifyClientCert } from './ca.js';
+import type { CertDB } from './db-certs.js';
 
 interface HubDBLike {
   getAllClients(): { client_id: string; hostname: string }[];
@@ -16,6 +19,9 @@ interface HubDBLike {
 interface AuthedClient {
   ws: WebSocket;
   clientId: string;
+  identity?: string;
+  certSerial?: string;
+  authMethod: 'psk' | 'mtls';
   subscribedRooms: Set<string>;
 }
 
@@ -38,6 +44,7 @@ export class WsHub {
   private roomDB: RoomDB;
   private imDB: IMDB;
   private hubDB: HubDBLike | null;
+  private certDB: CertDB | null;
   private psk: string;
   private staleCheckTimer: ReturnType<typeof setInterval> | null = null;
   private imCleanupTimer: ReturnType<typeof setInterval> | null = null;
@@ -48,10 +55,11 @@ export class WsHub {
   /** IM message processing concurrency counter */
   private imActiveCount = 0;
 
-  constructor(server: Server, roomDB: RoomDB, imDB: IMDB, hubDB: HubDBLike | null, psk: string, taskEngine?: TaskEngine) {
+  constructor(server: Server | TlsServer, roomDB: RoomDB, imDB: IMDB, hubDB: HubDBLike | null, psk: string, taskEngine?: TaskEngine, certDB?: CertDB) {
     this.roomDB = roomDB;
     this.imDB = imDB;
     this.hubDB = hubDB;
+    this.certDB = certDB ?? null;
     this.psk = psk;
     this.taskEngine = taskEngine ?? null;
     this.wss = new WebSocketServer({ server, path: '/ws' });
@@ -59,7 +67,29 @@ export class WsHub {
       this.taskHandler = createTaskHandler(taskEngine, this, this.roomDB);
     }
 
-    this.wss.on('connection', (ws) => {
+    this.wss.on('connection', (ws, req) => {
+      // Check for mTLS client certificate at connection time
+      const peerCert = this.extractPeerCert(req);
+      if (peerCert) {
+        // mTLS: auto-authenticate from certificate
+        clearTimeout(null!); // no auth timeout needed for mTLS
+        const client: AuthedClient = {
+          ws,
+          clientId: peerCert.identity,
+          identity: peerCert.identity,
+          certSerial: peerCert.serial,
+          authMethod: 'mtls',
+          subscribedRooms: new Set(),
+        };
+        this.clients.set(ws, client);
+        this.clientIdToWs.set(client.clientId, ws);
+        LOG(`Client authenticated via mTLS: ${client.identity} (serial: ${client.certSerial})`);
+        this.send(ws, { type: 'auth.ok', clientId: client.clientId, authMethod: 'mtls' });
+        this.sendPendingImInvitations(client);
+        return; // Skip PSK auth flow
+      }
+
+      // No mTLS cert: require PSK auth message within timeout
       const authTimeout = setTimeout(() => {
         if (!this.clients.has(ws)) {
           ws.close(4001, 'Auth timeout');
@@ -105,6 +135,34 @@ export class WsHub {
     }, IM_CLEANUP_INTERVAL_MS);
   }
 
+  /** Extract and verify mTLS client certificate from WS upgrade request */
+  private extractPeerCert(req: import('node:http').IncomingMessage): { identity: string; serial: string } | null {
+    try {
+      const socket = req.socket as unknown as { getPeerCertificate?: () => Record<string, unknown> };
+      const cert = socket.getPeerCertificate?.();
+      if (!cert || Object.keys(cert).length === 0) return null;
+
+      // Reconstruct PEM from raw certificate bytes
+      const raw = cert.raw as Uint8Array;
+      const certPem = `-----BEGIN CERTIFICATE-----\n${Buffer.from(raw).toString('base64').match(/.{1,64}/g)?.join('\n')}\n-----END CERTIFICATE-----\n`;
+      const verified = verifyClientCert(certPem);
+      if (!verified) return null;
+
+      // Check if revoked in DB
+      if (this.certDB) {
+        const record = this.certDB.getCert(verified.serial);
+        if (record && record.status !== 'active') {
+          LOG(`mTLS cert rejected (status: ${record.status}): ${verified.identity}`);
+          return null;
+        }
+      }
+
+      return { identity: verified.identity, serial: verified.serial };
+    } catch {
+      return null;
+    }
+  }
+
   private handleAuth(ws: WebSocket, msg: WsAuthMessage): void {
     try {
       const now = Date.now();
@@ -123,6 +181,7 @@ export class WsHub {
       const client: AuthedClient = {
         ws,
         clientId: decrypted.clientId,
+        authMethod: 'psk',
         subscribedRooms: new Set(),
       };
       this.clients.set(ws, client);
